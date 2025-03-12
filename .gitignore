@@ -1,2 +1,3 @@
 # Standard filesystem ignore
 .DS_Store
+.qodo
