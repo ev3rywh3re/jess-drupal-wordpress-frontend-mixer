@@ -11,3 +11,15 @@ The current setup is like so
 * drupal
 
 ## Basic Wordpress setup
+
+mkdir wordpress
+cd wordpress
+ddev config --project-type=wordpress --docroot=web --create-docroot
+ddev start
+ddev composer create-project roots/bedrock
+
+Setup .env file as directed at https://ddev.readthedocs.io/en/stable/users/quickstart/#wordpress
+Use ddev describe for DB info.
+
+ddev wp core install --url='http://wordpress.ddev.site' --title='My WordPress site' --admin_user=admin --admin_password=admin --admin_email=admin@example.com
+
