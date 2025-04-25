@@ -1,3 +1,33 @@
 # Standard filesystem ignore
 .DS_Store
-.qodo
+Thumbs.db
+
+# Editor/IDE specific files
+.vscode/
+.idea/
+*.swp
+*~
+
+# DDEV state files (might appear if operations are interrupted)
+.ddev/.importdb*
+.ddev/commands/web/composer
+.ddev/commands/host/ddev
+.ddev/commands/db/mysql
+.ddev/ssh-auth-sock
+
+# --- Core Sub-Project Exclusions ---
+# Ignore everything within the individual site directories.
+# This prevents the actual site code, dependencies (vendor, node_modules),
+# configuration (.env), build artifacts (dist), and their specific .ddev
+# configurations from being committed to THIS repository.
+# Each sub-project could potentially be its own Git repository later.
+/wordpress/
+/drupal/
+/frontend/
+
+# If you create any top-level vendor or node_modules (e.g., for scripting)
+/vendor/
+/node_modules/
+
+# Log files
+*.log
