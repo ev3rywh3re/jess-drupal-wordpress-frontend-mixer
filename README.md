@@ -181,7 +181,12 @@ This uses the standard Composer-based Drupal setup.
 4.  **Install Drupal:**
     *   **Option A (Browser):** Visit the project URL (`https://drupal-site.ddev.site`) and follow the graphical installation wizard. DDEV automatically provides the database connection details to Drupal.
     *   **Option B (Drush via DDEV):** Run from the `drupal` directory:
+    
         ```bash
+        #install Drush if needed
+        ddev composer require drush/drush
+
+        # install site
         ddev drush site:install standard --db-url=mysql://db:db@db/db --site-name="My Drupal Site" --account-name=admin --account-pass=password -y
         ```
         *(Use strong credentials!)*
@@ -189,8 +194,7 @@ This uses the standard Composer-based Drupal setup.
 
 5.  **Manage Modules/Themes (Composer - Standard):**
     *   Require modules/themes using Composer (run from the `drupal` directory):
-        ```bash
-        # Example: ddev composer require drupal/admin_toolbar drupal/gin
+        ```bash        # Example: ddev composer require drupal/admin_toolbar drupal/gin
         ```
     *   Enable them via the Drupal UI (`/admin/modules`) or Drush:
         ```bash
