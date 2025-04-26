@@ -23,7 +23,6 @@ Thumbs.db
 # Each sub-project could potentially be its own Git repository later.
 /wordpress/
 /drupal/
-/frontend/
 
 # If you create any top-level vendor or node_modules (e.g., for scripting)
 /vendor/
