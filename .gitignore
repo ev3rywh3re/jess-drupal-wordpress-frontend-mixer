@@ -18,6 +18,7 @@ auth.json
 
 # Log files
 *.log
+npm-debug.log*
 
 # WordPress Sub-Project Exclusions
 /wordpress/.ddev/commands/
@@ -26,6 +27,13 @@ auth.json
 /wordpress/composer.phar
 /wordpress/auth.json
 /wordpress/*.sql.gz
+# --- Ignore Sub-Project Contents By Default ---
+# Ignore everything within the main project directories initially.
+# This includes core files, vendor dirs, node_modules, .ddev configs,
+# .env files, build outputs, uploads, cache, etc.
+/wordpress/
+/drupal/
+/frontend/
 
 # Drupal Sub-Project Exclusions ---
 /drupal/web/themes/contrib/ # Ignore contrib themes managed by Composer
@@ -40,12 +48,48 @@ auth.json
 /drupal/*.sql.gz
 /drupal/composer.phar
 /drupal/auth.json
+# --- WordPress: Un-ignore Custom Code ---
+# Keep custom themes, plugins, and mu-plugins.
+!/wordpress/web/app/themes/
+!/wordpress/web/app/plugins/
+!/wordpress/web/app/mu-plugins/
+# Re-ignore common build/dependency folders *within* custom themes/plugins
+/wordpress/web/app/themes/*/node_modules/
+/wordpress/web/app/themes/*/vendor/
+/wordpress/web/app/themes/*/dist/
+/wordpress/web/app/themes/*/build/
+/wordpress/web/app/plugins/*/node_modules/
+/wordpress/web/app/plugins/*/vendor/
+/wordpress/web/app/plugins/*/dist/
+/wordpress/web/app/plugins/*/build/
+# Keep .gitkeep files if you use them in empty directories
+!/wordpress/web/app/themes/*/.gitkeep
+!/wordpress/web/app/plugins/*/.gitkeep
+!/wordpress/web/app/mu-plugins/*/.gitkeep
 
 # Optional: Ignore all compiled CSS/JS if using a theme build process
 /drupal/web/themes/custom/*/dist/
 /drupal/web/themes/custom/*/assets/css/
 /drupal/web/themes/custom/*/assets/js/
 /frontend/dist/ 
+# --- Drupal: Un-ignore Custom Code ---
+# Keep custom modules, themes, and profiles.
+!/drupal/web/modules/custom/
+!/drupal/web/themes/custom/
+!/drupal/web/profiles/custom/
+# Re-ignore common build/dependency folders *within* custom code
+/drupal/web/modules/custom/*/node_modules/
+/drupal/web/modules/custom/*/vendor/
+/drupal/web/modules/custom/*/dist/
+/drupal/web/modules/custom/*/build/
+/drupal/web/themes/custom/*/node_modules/
+/drupal/web/themes/custom/*/vendor/
+/drupal/web/themes/custom/*/dist/
+/drupal/web/themes/custom/*/build/
+# Keep .gitkeep files if you use them in empty directories
+!/drupal/web/modules/custom/*/.gitkeep
+!/drupal/web/themes/custom/*/.gitkeep
+!/drupal/web/profiles/custom/*/.gitkeep
 
 # Or 'build/', depending on the framework/config
 /frontend/.ddev/.importdb*
@@ -66,4 +110,18 @@ auth.json
 /frontend/*.log
 npm-debug.log*
 /frontend/npm-debug.log*
-
+# --- Frontend: Un-ignore Source & Config ---
+# Keep source code, public assets, and key config files.
+!/frontend/src/
+!/frontend/public/
+!/frontend/index.html
+!/frontend/package.json
+!/frontend/package-lock.json
+!/frontend/pnpm-lock.yaml
+!/frontend/yarn.lock
+!/frontend/*.config.js
+!/frontend/*.config.ts
+!/frontend/.*rc # Common config files like .eslintrc, .prettierrc
+# Keep .gitkeep files if you use them in empty directories
+!/frontend/src/*/.gitkeep
+!/frontend/public/*/.gitkeep
