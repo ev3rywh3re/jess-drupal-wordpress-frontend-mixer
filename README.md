@@ -52,6 +52,7 @@ jess-drupal-wordpress-frontend-mixer/
     ├── src/        # Example source code directory
     ├── package.json
     └── ... (other JS project files)
+└──── assets/         # Some base project starting files
 ```
 
 ## Setup Steps
