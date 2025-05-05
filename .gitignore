@@ -12,61 +12,51 @@ Thumbs.db
 /vendor/
 /node_modules/
 
+# Composer files (if run at top level)
+composer.phar
+auth.json
+
 # Log files
 *.log
 
-# --- WordPress Sub-Project Exclusions ---
-# Ignore WordPress dependencies, generated files, and sensitive info
-/wordpress/vendor/
-/wordpress/web/wp/ # Ignore WP core managed by Bedrock/Composer
-/wordpress/web/app/uploads/ # Ignore user uploads
-/wordpress/.env # Ignore environment variables (contains secrets)
-/wordpress/.ddev/.importdb*
+Unchanged lines
 /wordpress/.ddev/commands/
 /wordpress/.ddev/ssh-auth-sock
 /wordpress/*.sql
+/wordpress/composer.phar
+/wordpress/auth.json
 /wordpress/*.sql.gz
 
 # --- Drupal Sub-Project Exclusions ---
-# Ignore Drupal dependencies, generated files, and sensitive info
-/drupal/vendor/
-/drupal/web/core/ # Ignore Drupal core managed by Composer
-/drupal/web/modules/contrib/ # Ignore contrib modules managed by Composer
+Unchanged lines
 /drupal/web/themes/contrib/ # Ignore contrib themes managed by Composer
 /drupal/web/profiles/contrib/ # Ignore contrib profiles managed by Composer
 /drupal/web/sites/*/files/ # Ignore user files/uploads
+/drupal/web/libraries/ # Ignore non-Composer managed libraries
 /drupal/web/sites/*/settings.local.php # Often contains local overrides/secrets
 /drupal/drush/Commands/contrib/ # Ignore contrib Drush commands
 /drupal/.ddev/.importdb*
-/drupal/.ddev/commands/
+Unchanged lines
 /drupal/.ddev/ssh-auth-sock
 /drupal/*.sql
 /drupal/*.sql.gz
+/drupal/composer.phar
+/drupal/auth.json
 # Optional: Ignore all compiled CSS/JS if using a theme build process
-# /drupal/web/themes/custom/*/dist/
-# /drupal/web/themes/custom/*/assets/css/
-# /drupal/web/themes/custom/*/assets/js/
-
-# --- Frontend Sub-Project Exclusions ---
-# Ignore frontend dependencies and build artifacts
-/frontend/node_modules/
-/frontend/dist/ # Or 'build/', depending on the framework/config
+/drupal/web/themes/custom/*/dist/
+/drupal/web/themes/custom/*/assets/css/
+/drupal/web/themes/custom/*/assets/js/
+/frontend/dist/ 
+# Or 'build/', depending on the framework/config
 /frontend/.ddev/.importdb*
 /frontend/.ddev/commands/
+/frontend/.vite/ # Vite cache directory
 /frontend/.ddev/ssh-auth-sock
 /frontend/.env* # Ignore any local .env files
 /frontend/.output/ # Common for Nuxt
 /frontend/.svelte-kit/ # Common for SvelteKit
 /frontend/coverage/ # Test coverage reports
 /frontend/*.log
+npm-debug.log*
+/frontend/npm-debug.log*
 
-# --- IMPORTANT ---
-# This granular approach allows tracking the .ddev configuration directories
-# (/wordpress/.ddev/, /drupal/.ddev/, /frontend/.ddev/) and potentially
-# custom code (like themes/modules/plugins) within this main repository.
-# If you prefer to keep the sub-projects completely separate and potentially
-# manage them as independent Git repositories later, uncomment the lines below
-# and comment out the specific exclusions above:
-# /wordpress/
-# /drupal/
-# /frontend/
