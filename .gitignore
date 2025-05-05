@@ -19,7 +19,7 @@ auth.json
 # Log files
 *.log
 
-Unchanged lines
+# WordPress Sub-Project Exclusions
 /wordpress/.ddev/commands/
 /wordpress/.ddev/ssh-auth-sock
 /wordpress/*.sql
@@ -27,8 +27,7 @@ Unchanged lines
 /wordpress/auth.json
 /wordpress/*.sql.gz
 
-# --- Drupal Sub-Project Exclusions ---
-Unchanged lines
+# Drupal Sub-Project Exclusions ---
 /drupal/web/themes/contrib/ # Ignore contrib themes managed by Composer
 /drupal/web/profiles/contrib/ # Ignore contrib profiles managed by Composer
 /drupal/web/sites/*/files/ # Ignore user files/uploads
@@ -36,26 +35,34 @@ Unchanged lines
 /drupal/web/sites/*/settings.local.php # Often contains local overrides/secrets
 /drupal/drush/Commands/contrib/ # Ignore contrib Drush commands
 /drupal/.ddev/.importdb*
-Unchanged lines
 /drupal/.ddev/ssh-auth-sock
 /drupal/*.sql
 /drupal/*.sql.gz
 /drupal/composer.phar
 /drupal/auth.json
+
 # Optional: Ignore all compiled CSS/JS if using a theme build process
 /drupal/web/themes/custom/*/dist/
 /drupal/web/themes/custom/*/assets/css/
 /drupal/web/themes/custom/*/assets/js/
 /frontend/dist/ 
+
 # Or 'build/', depending on the framework/config
 /frontend/.ddev/.importdb*
 /frontend/.ddev/commands/
-/frontend/.vite/ # Vite cache directory
+# Vite cache directory
+/frontend/.vite/
+
 /frontend/.ddev/ssh-auth-sock
-/frontend/.env* # Ignore any local .env files
-/frontend/.output/ # Common for Nuxt
-/frontend/.svelte-kit/ # Common for SvelteKit
-/frontend/coverage/ # Test coverage reports
+
+# Ignore any local .env files
+/frontend/.env*
+# Common for Nuxt
+/frontend/.output/
+# Common for SvelteKit
+/frontend/.svelte-kit/ 
+# Test coverage reports
+/frontend/coverage/ 
 /frontend/*.log
 npm-debug.log*
 /frontend/npm-debug.log*
