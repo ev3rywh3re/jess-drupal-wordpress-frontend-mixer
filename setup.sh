@@ -77,6 +77,64 @@ check_orbstack() {
   log "OrbStack is running."
 }
 
+# --- Site Control Functions ---
+control_ddev_project() {
+  local project_dir_name="$1"
+  local project_friendly_name="$2" # e.g., "WordPress"
+  local do_start="$3"
+  local do_stop="$4"
+
+  if [ ! -d "$project_dir_name" ] || [ ! -f "$project_dir_name/.ddev/config.yaml" ]; then
+    log "Project ${project_friendly_name} (${project_dir_name}) is not configured or directory does not exist. Skipping control."
+    return
+  fi
+
+  local current_dir
+  current_dir=$(pwd)
+  cd "$project_dir_name"
+
+  if [ "$do_stop" = true ]; then
+    log "Issuing stop command for ${project_friendly_name} DDEV project..."
+    ddev stop
+  fi
+
+  if [ "$do_start" = true ]; then
+    log "Checking status of ${project_friendly_name} DDEV project..."
+    if ddev status 2>/dev/null | grep -q "is running"; then # Check if DDEV reports project as running in current dir
+      log "${project_friendly_name} DDEV project is already running."
+    else
+      log "Issuing start command for ${project_friendly_name} DDEV project..."
+      if ! ddev start; then
+        log "ERROR: Failed to start ${project_friendly_name} DDEV project in ${project_dir_name}. Continuing if other sites targeted..."
+      fi
+    fi
+  fi
+
+  cd "$current_dir"
+}
+
+perform_site_control() {
+  local site_target="$1"
+  local do_start="$2"
+  local do_stop="$3"
+
+  log "Performing site control: Target=${site_target}, Start=${do_start}, Stop=${do_stop}"
+
+  local sites_to_control=()
+  if [ "$site_target" = "all" ]; then
+    sites_to_control=("wordpress" "drupal" "frontend")
+  elif [[ " wordpress drupal frontend " =~ " ${site_target} " ]]; then
+    sites_to_control=("$site_target")
+  else
+    echo "Error: Invalid site specified for control: '${site_target}'. Must be wordpress, drupal, frontend, or all."
+    exit 1
+  fi
+
+  for site_dir_name in "${sites_to_control[@]}"; do
+    local friendly_name="${site_dir_name^}"
+    control_ddev_project "$site_dir_name" "$friendly_name" "$do_start" "$do_stop"
+  done
+}
 
 # --- WordPress Setup ---
 setup_wordpress() {
@@ -117,10 +175,28 @@ setup_wordpress() {
     log "WordPress .env file already exists. Skipping modification."
   fi
 
-  log "Starting WordPress DDEV environment..."
-  ddev start
-  log "Waiting a few seconds for services to initialize..."
-  sleep 5
+  local needs_post_start_delay=false
+  log "Checking status of ${WP_PROJECT_NAME} DDEV environment..."
+  # `ddev status` run inside the project dir will refer to that project.
+  # We grep for "is running" which is part of DDEV's status message for a running project.
+  if ddev status 2>/dev/null | grep -q "is running"; then
+    log "${WP_PROJECT_NAME} DDEV environment is already running."
+  else
+    log "Starting ${WP_PROJECT_NAME} DDEV environment..."
+    if ! ddev start; then
+      log "ERROR: Failed to start ${WP_PROJECT_NAME} DDEV environment."
+      exit 1 # Critical failure for install process
+    fi
+    needs_post_start_delay=true
+  fi
+
+  if [ "$needs_post_start_delay" = true ]; then
+    log "Waiting a few seconds for services to initialize after fresh start..."
+    sleep 5
+  else
+    log "Brief pause for already running services..."
+    sleep 2 # Shorter pause if it was already running
+  fi
 
   log "Ensuring a clean database for WordPress installation..."
   # DDEV ensures 'db' database exists. We drop and recreate it to ensure it's empty.
@@ -188,8 +264,26 @@ setup_drupal() {
   log "Configuring DDEV for Drupal..."
   ddev config --project-name="$DRUPAL_PROJECT_NAME" --project-type=drupal10 --docroot=web
 
-  log "Starting Drupal DDEV environment..."
-  ddev start
+  local needs_post_start_delay=false
+  log "Checking status of ${DRUPAL_PROJECT_NAME} DDEV environment..."
+  if ddev status 2>/dev/null | grep -q "is running"; then
+    log "${DRUPAL_PROJECT_NAME} DDEV environment is already running."
+  else
+    log "Starting ${DRUPAL_PROJECT_NAME} DDEV environment..."
+    if ! ddev start; then
+      log "ERROR: Failed to start ${DRUPAL_PROJECT_NAME} DDEV environment."
+      exit 1
+    fi
+    needs_post_start_delay=true
+  fi
+
+  if [ "$needs_post_start_delay" = true ]; then
+    log "Waiting a few seconds for Drupal services to initialize after fresh start..."
+    sleep 5
+  else
+    log "Brief pause for already running Drupal services..."
+    sleep 2
+  fi
 
   log "Ensuring Drush is installed..."
   ddev composer require drush/drush --no-interaction --quiet
@@ -260,39 +354,96 @@ setup_frontend() {
   log "Configuring DDEV for Frontend..."
   ddev config --project-name="$FRONTEND_PROJECT_NAME" --project-type=php --docroot=dist --webserver-type=nginx-fpm
 
-  ddev start
+  log "Checking status of ${FRONTEND_PROJECT_NAME} DDEV environment..."
+  if ddev status 2>/dev/null | grep -q "is running"; then
+    log "${FRONTEND_PROJECT_NAME} DDEV environment is already running."
+  else
+    log "Starting ${FRONTEND_PROJECT_NAME} DDEV environment..."
+    if ! ddev start; then
+      log "ERROR: Failed to start ${FRONTEND_PROJECT_NAME} DDEV environment."
+      exit 1
+    fi
+    # Frontend doesn't have a DB install step, so less critical for long sleep,
+    # but good to ensure webserver is up.
+    log "Waiting a moment for frontend services..."
+    sleep 3
+  fi
+
   cd ..
   log "Frontend setup complete."
 }
 
 # --- Main Script ---
+# Initialize control flags
+SITE_TO_CONTROL=""
+ACTION_START=false
+ACTION_STOP=false
+ACTION_INSTALL=false
+
+# Parse arguments
 if [ "$#" -eq 0 ]; then
-  log "Running checks only (no installation)."
-  check_prerequisites
-  check_orbstack
-elif [ "$1" == "--install" ]; then
+    # No arguments: Default to checks only
+    log "No arguments provided. Running checks only."
+else
+    while [[ "$#" -gt 0 ]]; do
+        case $1 in
+            --site=*) SITE_TO_CONTROL="${1#*=}"; shift ;;
+            --start) ACTION_START=true; shift ;;
+            --stop) ACTION_STOP=true; shift ;;
+            --install) ACTION_INSTALL=true; shift ;;
+            *)
+                echo "Unknown parameter passed: $1"
+                echo "Usage: $0 [--install] [--site=<wordpress|drupal|frontend|all>] [--start] [--stop]"
+                echo "  --install                Run the full installation process after checks."
+                echo "  --site=<name|all>        Specify the site to control (wordpress, drupal, frontend, or all)."
+                echo "  --start                  Start the specified DDEV project(s)."
+                echo "  --stop                   Stop the specified DDEV project(s)."
+                echo "  (no args)                Run checks only."
+                exit 1
+                ;;
+        esac
+    done
+fi
+
+# Always run prerequisite checks
+check_prerequisites
+check_orbstack
+
+if [ "$ACTION_INSTALL" = true ]; then
   log "Running installation process."
-  check_prerequisites
-  check_orbstack
   setup_wordpress
   setup_drupal
   setup_frontend
+elif [ "$ACTION_START" = true ] || [ "$ACTION_STOP" = true ]; then
+  if [ -z "$SITE_TO_CONTROL" ]; then
+    echo "Error: --site must be specified with --start or --stop."
+    echo "Usage: $0 [--site=<wordpress|drupal|frontend|all>] [--start] [--stop]"
+    exit 1
+  fi
+  perform_site_control "$SITE_TO_CONTROL" "$ACTION_START" "$ACTION_STOP"
 else
-  echo "Usage: $0 [--install]"
-  echo "  --install   Run the full installation process after checks."
-  echo "  (no args)   Run checks only."
-  exit 1
+  log "Checks complete. No installation or specific control actions were requested."
 fi
 
 # --- Final Summary ---
 log "Setup Script Finished!"
 echo ""
-echo "Project URLs:"
-echo "  WordPress: ${WP_URL}"
-echo "  Drupal:    ${DRUPAL_URL}"
-echo "  Frontend:  ${FRONTEND_URL}"
-echo ""
-echo "Ensure you have at least one published post in WordPress and one published 'article' node in Drupal for the frontend demo to display data."
+if [ "$ACTION_INSTALL" = true ]; then
+  echo "Project URLs (after installation):"
+  echo "  WordPress: ${WP_URL}"
+  echo "  Drupal:    ${DRUPAL_URL}"
+  echo "  Frontend:  ${FRONTEND_URL}"
+  echo ""
+  echo "Ensure you have at least one published post in WordPress and one published 'article' node in Drupal for the frontend demo to display data."
+elif [ "$ACTION_START" = true ] || [ "$ACTION_STOP" = true ]; then
+  echo "Site control actions completed for: '${SITE_TO_CONTROL}'."
+  if [ "$ACTION_START" = true ]; then
+    echo "Relevant project URLs should have been displayed by DDEV during startup if they were started."
+    echo "Use 'ddev list' or 'ddev describe' in the respective project directories to see current URLs and status."
+  fi
+else
+  echo "Prerequisite checks completed. No further actions were performed."
+fi
 echo ""
 
 exit 0
