@@ -159,21 +159,30 @@ setup_wordpress() {
   ddev config --project-name="$WP_PROJECT_NAME" --project-type=wordpress --docroot=web
 
   log "Configuring Bedrock .env file..."
-  if [ ! -f ".env" ]; then
-    cp .env.example .env
-    sed -i.bak \
-        -e "s|^DB_NAME=.*|DB_NAME='db'|" \
-        -e "s|^DB_USER=.*|DB_USER='db'|" \
-        -e "s|^DB_PASSWORD=.*|DB_PASSWORD='db'|" \
-        -e "s|^DB_HOST=.*|DB_HOST='db'|" \
-        -e "s|^WP_HOME=.*|WP_HOME='${WP_URL}'|" \
-        -e "s|^WP_SITEURL=.*|WP_SITEURL='${WP_URL}/wp'|" \
-        .env
-    rm .env.bak
-    log "WordPress .env configured. CRITICAL: You MUST manually add unique salts!"
-  else
-    log "WordPress .env file already exists. Skipping modification."
+  # Ensure .env.example exists, as it's our source.
+  if [ ! -f ".env.example" ]; then
+    log "ERROR: .env.example is missing in $(pwd). Cannot configure WordPress. 'composer create-project roots/bedrock' might have failed or changed its output."
+    exit 1
   fi
+
+  log "Creating/refreshing .env from .env.example to ensure all base settings are present for DDEV."
+  cp .env.example .env # This will overwrite .env if it exists, ensuring a clean base.
+
+  log "Applying DDEV-specific values to .env..."
+  # Using '#' as the sed delimiter because $WP_URL contains '/' characters.
+  sed -i.bak \
+      -e "s#^DB_NAME=.*#DB_NAME='db'#" \
+      -e "s#^DB_USER=.*#DB_USER='db'#" \
+      -e "s#^DB_PASSWORD=.*#DB_PASSWORD='db'#" \
+      -e "s#^DB_HOST=.*#DB_HOST='db'#" \
+      -e "s#^WP_HOME=.*#WP_HOME='${WP_URL}'#" \
+      -e "s#^WP_SITEURL=.*#WP_SITEURL='${WP_URL}/wp'#" \
+      .env
+  rm .env.bak # Remove the backup file created by sed
+  log "WordPress .env configured with DDEV values. CRITICAL: You MUST manually add unique salts if they were placeholders or if this is a fresh setup!"
+  log "Verifying .env contents from script's perspective (in $(pwd)):"
+  grep -E "^DB_HOST=|^WP_HOME=" .env || log "WARNING: DB_HOST or WP_HOME not found in .env by grep!"
+
 
   local needs_post_start_delay=false
   log "Checking status of ${WP_PROJECT_NAME} DDEV environment..."
@@ -200,11 +209,14 @@ setup_wordpress() {
 
   log "Ensuring a clean database for WordPress installation..."
   # DDEV ensures 'db' database exists. We drop and recreate it to ensure it's empty.
-  # Errors are ignored in case the DB wasn't fully there yet, though ddev start usually handles it.
-  ddev mysql -e "DROP DATABASE IF EXISTS db; CREATE DATABASE db;" >/dev/null 2>&1 || log "Note: DB drop/create might have had minor issues, usually ignorable on first run."
+  if ! ddev mysql -e "DROP DATABASE IF EXISTS db; CREATE DATABASE db;" >/dev/null 2>&1; then
+    log "ERROR: Failed to drop/create the database for WordPress. This is a critical step."
+    log "Please check DDEV service status and logs for the '${WP_PROJECT_NAME}' project (e.g., 'ddev logs -s db')."
+    exit 1
+  fi
 
   log "Installing WordPress core..."
-  if ! ddev wp --path=web/wp core install --url="$WP_URL" --title='My Bedrock Site' --admin_user=admin --admin_password=password --admin_email=admin@example.com --debug; then
+  if ! ddev wp --path=web/wp core install --url="$WP_URL" --title="My Bedrock Site" --admin_user=admin --admin_password=password --admin_email=admin@example.com --debug; then
     log "ERROR: WordPress core installation failed. Please check the output above for details from WP-CLI."
     log "A common cause is not updating the salts in the wordpress/.env file. Please ensure they are unique."
     exit 1
@@ -447,3 +459,4 @@ fi
 echo ""
 
 exit 0
+
