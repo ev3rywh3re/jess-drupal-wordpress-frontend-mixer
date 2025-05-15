@@ -385,6 +385,23 @@ setup_frontend() {
   log "Frontend setup complete."
 }
 
+# --- Help Function ---
+show_help() {
+  echo "Usage: $0 [options]"
+  echo ""
+  echo "Options:"
+  echo "  --help                   Show this help message"
+  echo "  --install                Run the full installation process after checks."
+  echo "  --site=<name|all>        Specify the site to control (wordpress, drupal, frontend, or all)."
+  echo "  --start                  Start the specified DDEV project(s)."
+  echo "  --stop                   Stop the specified DDEV project(s)."
+  echo ""
+  echo "Examples:"
+  echo "  $0 --help                 Show this help message."
+  echo "  $0                       Run checks only."
+  echo "  $0 --install              Install all sites."
+  echo "  $0 --site=wordpress --start  Start the WordPress site."
+}
 # --- Main Script ---
 # Initialize control flags
 SITE_TO_CONTROL=""
@@ -394,7 +411,11 @@ ACTION_INSTALL=false
 
 # Parse arguments
 if [ "$#" -eq 0 ]; then
-    # No arguments: Default to checks only
+  # No arguments: Default to checks only
+  log "No arguments provided. Running checks only."
+elif [[ "$1" == "--help" ]]; then
+    show_help
+    exit 0
     log "No arguments provided. Running checks only."
 else
     while [[ "$#" -gt 0 ]]; do
@@ -459,4 +480,3 @@ fi
 echo ""
 
 exit 0
-
