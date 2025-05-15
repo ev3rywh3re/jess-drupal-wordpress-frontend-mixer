@@ -8,7 +8,9 @@ This project provides the structure and instructions to set up three distinct we
 *   **Drupal Site:** Uses the standard `drupal/recommended-project` Composer template.
 *   **Frontend Site:** A placeholder for a JavaScript framework/library (Vue, Svelte, React, etc.), served statically by DDEV after being built.
 
-The main repository (this one) contains only the setup instructions and configuration (`README.md`, `.gitignore`). The actual code for the WordPress, Drupal, and Frontend sites resides within their respective subdirectories, which are ignored by Git in *this* repository. Please note this if you want to use this for your own projects.
+The main repository (this one) contains  the setup instructions (README.md) and git .gitignore files along with a setup.sh script. 
+
+The actual code for the WordPress, Drupal, and Frontend sites resides within their respective subdirectories, which are ignored by Git in *this* repository. Please note this if you want to use this for your own projects.
 
 ## Prerequisites
 
@@ -57,6 +59,8 @@ jess-drupal-wordpress-frontend-mixer/
 
 ## Setup Steps
 
+The setup script (`setup.sh`) is provided as an attempt to automate this project setup, configuration, and functionality. 
+
 Follow these steps sequentially to configure and launch each site. Run commands from the main `jess-drupal-wordpress-frontend-mixer` directory unless specified otherwise.
 
 ### 1. WordPress Site (Bedrock)
@@ -76,10 +80,10 @@ This setup uses the Bedrock boilerplate.
 
 2.  **Configure DDEV:**
 *   Initialize DDEV for this WordPress/Bedrock project. DDEV should detect the `wordpress` type and `web` docroot from Bedrock's `composer.json`.
-        ```bash
-        ddev wp core install --title='My Bedrock Site' --admin_user=admin --admin_password=password --admin_email=admin@example.com --url=https://wordpress-bedrock.ddev.site
-        ```
-        *(You can choose a different `--project-name` if desired; this affects the URL)*
+    ```bash
+    ddev config --project-name=wordpress-bedrock --project-type=wordpress --docroot=web
+    ```
+    *(You can choose a different `--project-name` if desired; this affects the URL)*
 
 3.  **Configure Bedrock Environment (`.env`):**
     *   Bedrock uses a `.env` file. Copy the example:
@@ -117,20 +121,20 @@ This setup uses the Bedrock boilerplate.
 
 4.  **Start DDEV:**
     *   Make sure you are still inside the `wordpress` directory.
-    *   Start the DDEV environment:
-        ```bash
-        ddev start
-        ```
-    *   Note the primary URL provided (e.g., `https://wordpress-bedrock.ddev.site`).
+    * Start the DDEV environment:
+    ```bash
+    ddev start
+    ```
+    * Note the primary URL provided (e.g., `https://wordpress-bedrock.ddev.site`).
 
 5.  **Install WordPress Core:**
     *   Use WP-CLI via DDEV to perform the installation. **Crucially, specify both the `--path` and `--url` for Bedrock compatibility.**
-        ```bash
-        # Explicitly provide the path and URL for Bedrock compatibility
-        # Replace 'https://wordpress-bedrock.ddev.site' if your project URL is different
-        ddev wp --path=web/wp core install --url='https://wordpress-bedrock.ddev.site' --title='My Bedrock Site' --admin_user=admin --admin_password=password --admin_email=admin@example.com
-        ```
-        *(Use strong credentials for any real project!)*
+    ```bash
+    # Explicitly provide the path and URL for Bedrock compatibility
+    # Replace 'https://wordpress-bedrock.ddev.site' if your project URL is different
+    ddev wp --path=web/wp core install --url='https://wordpress-bedrock.ddev.site' --title='My Bedrock Site' --admin_user=admin --admin_password=password --admin_email=admin@example.com
+    ```
+    *(Use strong credentials for any real project!)*
     *   You should now be able to access the WP Admin at `https://wordpress-bedrock.ddev.site/wp/wp-admin/`.
 
 6.  **Manage Plugins/Themes (Composer - Recommended):**
@@ -167,7 +171,7 @@ This uses the standard Composer-based Drupal setup.
 
 2.  **Configure DDEV:**
     *   Initialize DDEV. It should detect `drupal10` (or your installed version) and the `web` docroot.
-        ```bash
+    ```bash
         ddev config --project-name=drupal-site --project-type=drupal10 --docroot=web
         ```
         *(Adjust `drupal10` if using Drupal 9 (`drupal9`) or 7 (`drupal7`). Change `--project-name` if desired.)*
@@ -297,4 +301,3 @@ This sets up DDEV to serve the *built static assets* of a JavaScript application
 
 *   **Frontend Framework:** Replace the example `npm create vite...` command in the Frontend setup with the initialization command for your chosen framework/library. Remember to update the `ddev config --docroot` if the build output directory name is different from `dist`.
 *   **Project Names:** Feel free to change the `--project-name` arguments during `ddev config` for different DDEV hostnames. Just ensure you update the URLs accordingly (e.g., in Bedrock's `.env` file and the `--url` parameter during WP install).
-
