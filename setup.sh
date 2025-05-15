@@ -179,10 +179,16 @@ setup_wordpress() {
       -e "s#^WP_SITEURL=.*#WP_SITEURL='${WP_URL}/wp'#" \
       .env
   rm .env.bak # Remove the backup file created by sed
-  log "WordPress .env configured with DDEV values. CRITICAL: You MUST manually add unique salts if they were placeholders or if this is a fresh setup!"
-  log "Verifying .env contents from script's perspective (in $(pwd)):"
-  grep -E "^DB_HOST=|^WP_HOME=" .env || log "WARNING: DB_HOST or WP_HOME not found in .env by grep!"
 
+  # Check if DB_HOST is present; if not, append it.
+  if ! grep -q "^DB_HOST=" .env; then
+    echo "DB_HOST='db'" >> .env
+    log "DB_HOST was not found in .env and has been added."
+  fi
+
+    log "WordPress .env configured with DDEV values. CRITICAL: You MUST manually add unique salts if they were placeholders or if this is a fresh setup!"
+    log "Verifying .env contents from script's perspective (in $(pwd)):"
+    grep -E "^DB_HOST=|^WP_HOME=" .env || log "WARNING: DB_HOST or WP_HOME not found in .env by grep!"
 
   local needs_post_start_delay=false
   log "Checking status of ${WP_PROJECT_NAME} DDEV environment..."
