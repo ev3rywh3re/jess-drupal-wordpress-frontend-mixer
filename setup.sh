@@ -320,20 +320,43 @@ setup_drupal() {
   fi
 
   if [ -f "$DRUPAL_SERVICES_YML" ]; then
-    if ! grep -q "cors.config:" "$DRUPAL_SERVICES_YML"; then
-      cat << EOF >> "$DRUPAL_SERVICES_YML"
+    log "Modifying $DRUPAL_SERVICES_YML for CORS..."
+    # Escape FRONTEND_URL for sed replacement. Handles typical URL characters.
+    # For YAML single-quoted strings, a single quote ' is escaped as ''.
+    local frontend_url_escaped
+    frontend_url_escaped=$(printf '%s\n' "$FRONTEND_URL" | sed -e 's/[\/&]/\\&/g' -e "s/'/''/g")
 
-  cors.config:
-    enabled: true
-    allowedOrigins: ['${FRONTEND_URL}']
-    allowedMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With, Accept']
-    exposedHeaders: false
-    maxAge: 0
-    supportsCredentials: false
-EOF
-    fi
+    # This sed command attempts to uncomment and configure CORS settings.
+    # It assumes a structure similar to Drupal's default.services.yml where
+    # 'parameters:' exists, and 'cors.config:' is commented out under it.
+    # Heuristic block matching is used. Review $DRUPAL_SERVICES_YML if issues persist.
+    sed -i.bak -E \
+      -e "/^[[:space:]]*##*[[:space:]]*parameters:/s|^([[:space:]]*)##*([[:space:]]*parameters:)|\1\2|" \
+      -e "/^[[:space:]]*parameters:/,/^([^[:space:]]|$)/{ \
+            /^[[:space:]]*##*[[:space:]]*cors\.config:/s|^([[:space:]]*)##*([[:space:]]*cors\.config:)|\1\2| ; \
+            /^[[:space:]]*cors\.config:/,/^([[:space:]]{0,2}[^[:space:]#]|$)/{ \
+                s|^([[:space:]]*)##*([[:space:]]*enabled:[[:space:]]*)(false|true)|\1\2true| ; \
+                s|^([[:space:]]*enabled:[[:space:]]*)(false|true)|\1true| ; \
+                s|^([[:space:]]*)##*([[:space:]]*allowedOrigins:[[:space:]]*).*|\1allowedOrigins: ['${frontend_url_escaped}']| ; \
+                s|^([[:space:]]*allowedOrigins:[[:space:]]*).*|\1allowedOrigins: ['${frontend_url_escaped}']| ; \
+                s|^([[:space:]]*)##*([[:space:]]*allowedMethods:[[:space:]]*).*|\1allowedMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']| ; \
+                s|^([[:space:]]*allowedMethods:[[:space:]]*).*|\1allowedMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']| ; \
+                s|^([[:space:]]*)##*([[:space:]]*allowedHeaders:[[:space:]]*).*|\1allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept']| ; \
+                s|^([[:space:]]*allowedHeaders:[[:space:]]*).*|\1allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept']| ; \
+                s|^([[:space:]]*)##*([[:space:]]*exposedHeaders:[[:space:]]*).*|\1exposedHeaders: false| ; \
+                s|^([[:space:]]*exposedHeaders:[[:space:]]*).*|\1exposedHeaders: false| ; \
+                s|^([[:space:]]*)##*([[:space:]]*maxAge:[[:space:]]*).*|\1maxAge: 0| ; \
+                s|^([[:space:]]*maxAge:[[:space:]]*).*|\1maxAge: 0| ; \
+                s|^([[:space:]]*)##*([[:space:]]*supportsCredentials:[[:space:]]*).*|\1supportsCredentials: false| ; \
+                s|^([[:space:]]*supportsCredentials:[[:space:]]*).*|\1supportsCredentials: false| ; \
+            } \
+         }" "$DRUPAL_SERVICES_YML"
+
+    rm -f "${DRUPAL_SERVICES_YML}.bak" # Remove backup if sed was successful
+    log "Drupal CORS configuration modification attempted. Clearing Drupal cache."
     ddev drush cr
+  else
+    log "ERROR: $DRUPAL_SERVICES_YML not found. Cannot configure Drupal CORS."
   fi
 
   cd ..
@@ -422,7 +445,6 @@ if [ "$#" -eq 0 ]; then
 elif [[ "$1" == "--help" ]]; then
     show_help
     exit 0
-    log "No arguments provided. Running checks only."
 else
     while [[ "$#" -gt 0 ]]; do
         case $1 in
@@ -432,12 +454,7 @@ else
             --install) ACTION_INSTALL=true; shift ;;
             *)
                 echo "Unknown parameter passed: $1"
-                echo "Usage: $0 [--install] [--site=<wordpress|drupal|frontend|all>] [--start] [--stop]"
-                echo "  --install                Run the full installation process after checks."
-                echo "  --site=<name|all>        Specify the site to control (wordpress, drupal, frontend, or all)."
-                echo "  --start                  Start the specified DDEV project(s)."
-                echo "  --stop                   Stop the specified DDEV project(s)."
-                echo "  (no args)                Run checks only."
+                show_help
                 exit 1
                 ;;
         esac
