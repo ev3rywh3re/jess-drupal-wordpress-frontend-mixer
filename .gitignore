@@ -42,7 +42,7 @@ npm-debug.log*
 /vendor/
 /web/core/
 /web/modules/contrib/
-/web/themes/contrib/  # <-- This line ignores all contributed themes
+/web/themes/contrib/ 
 /web/profiles/contrib/
 /web/libraries/
 
