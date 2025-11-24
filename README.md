@@ -16,6 +16,10 @@ The actual code for the WordPress, Drupal, and Frontend sites resides within the
 
 Before you begin, ensure you have the following installed and configured:
 
+### A. Docker Environment
+
+You need a working Docker environment that DDEV can use. The setup script will check for a running Docker daemon.
+
 *   **DDEV-Compatible Docker Provider:** You need a working Docker environment that DDEV can use. Common options include:
     *   OrbStack (macOS)
     *   Docker Desktop (macOS, Windows, Linux)
@@ -27,6 +31,67 @@ Before you begin, ensure you have the following installed and configured:
 *   **Composer:** Installed globally (e.g., `brew install composer`). Verify with `composer --version`.
 *   **Node.js & npm (or yarn/pnpm):** Installed (e.g., `brew install node`) for the frontend site build process. Verify with `node -v` and `npm -v`.
 *   **(Optional but helpful) jq:** A command-line JSON processor, useful for extracting info from `ddev describe`. (e.g., `brew install jq`).
+
+#### On macOS
+
+**OrbStack** is highly recommended for its speed and low resource usage.
+
+```bash
+# Install OrbStack using Homebrew
+brew install --cask orbstack
+
+# After installation, launch the OrbStack application.
+```
+
+Alternatively, you can use Docker Desktop.
+
+#### On Fedora Linux
+
+Follow these steps to install Docker Engine and grant your user permission to run it.
+
+1.  **Set up Docker's repository:**
+    ```bash
+    sudo dnf -y install dnf-plugins-core
+    sudo dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo
+    ```
+
+2.  **Install Docker Engine:**
+    ```bash
+    sudo dnf install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    ```
+
+3.  **Start and enable the Docker service:**
+    ```bash
+    sudo systemctl start docker
+    sudo systemctl enable docker
+    ```
+
+4.  **Add your user to the `docker` group (CRITICAL):** This allows you to run Docker commands without `sudo`.
+    ```bash
+    sudo usermod -aG docker $USER
+    ```
+    **You MUST log out and log back in for this change to take effect.** You can verify it worked by running `docker ps` in a new terminal session; it should execute without a permission error.
+
+### B. Core Development Tools
+
+#### On macOS (using Homebrew)
+
+```bash
+brew install ddev/ddev/ddev
+brew install composer
+brew install node
+brew install jq # Optional but recommended
+```
+
+#### On Fedora Linux
+
+```bash
+# Install DDEV (official script)
+curl -fsSL https://raw.githubusercontent.com/ddev/ddev/master/scripts/install_ddev.sh | bash
+
+# Install other tools using dnf
+sudo dnf install composer nodejs jq # For Node.js, you may want to use a specific module stream
+```
 
 ## Project Structure
 

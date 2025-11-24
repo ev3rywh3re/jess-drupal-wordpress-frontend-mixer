@@ -16,6 +16,10 @@ WP_URL="https://${WP_PROJECT_NAME}.ddev.site"
 DRUPAL_URL="https://${DRUPAL_PROJECT_NAME}.ddev.site"
 FRONTEND_URL="https://${FRONTEND_PROJECT_NAME}.ddev.site"
 
+# --- OS Detection ---
+OS_TYPE=$(uname -s)
+PKG_MANAGER=""
+
 # --- Helper Functions ---
 log() {
   echo "" # Add a newline for readability
@@ -36,9 +40,22 @@ is_frontend_installed() {
   [ -d "frontend" ] && [ -f "frontend/.ddev/config.yaml" ]
 }
 
+# --- Prerequisite Detection ---
+detect_package_manager() {
+  if [ "$OS_TYPE" != "Linux" ]; then
+    return
+  fi
+
+  if command -v apt-get >/dev/null 2>&1; then
+    PKG_MANAGER="apt"
+  elif command -v dnf >/dev/null 2>&1; then
+    PKG_MANAGER="dnf"
+  fi
+}
+
 # --- Prerequisite Checks ---
-check_prerequisites() {
-  log "Checking prerequisites..."
+check_core_tools() {
+  log "Checking for core tools (ddev, composer, node, npm)..."
   local missing_tools=()
   local tools=("ddev" "composer" "node" "npm")
 
@@ -50,28 +67,61 @@ check_prerequisites() {
 
   if [ ${#missing_tools[@]} -ne 0 ]; then
     echo "ERROR: The following tools are missing and must be installed before proceeding:"
+    echo ""
     for tool in "${missing_tools[@]}"; do
       echo "  - $tool"
     done
-    echo "Please install the missing tools and re-run the script."
+    
+    if [ "$PKG_MANAGER" = "apt" ]; then
+      echo ""
+      echo "On Debian/Ubuntu, you can try installing some with: sudo apt-get install composer nodejs npm jq"
+    elif [ "$PKG_MANAGER" = "dnf" ]; then
+      echo ""
+      echo "On Fedora, you can try installing some with: sudo dnf install composer nodejs jq"
+    fi
+
+    echo ""
+    echo "For DDEV and complete instructions, please see the 'Prerequisites' section in README.md."
     exit 1
   fi
 
-  log "All prerequisites are installed."
+  log "All core tools are installed."
 }
-check_orbstack() {
-  log "Checking if OrbStack is running..."
 
-  # Check if the `orb` command exists
-  if ! command -v orb >/dev/null 2>&1; then
-    echo "ERROR: OrbStack CLI ('orb') is not installed or not in the PATH. Please install OrbStack and re-run the script."
+check_docker_environment() {
+  log "Checking for a running Docker environment..."
+
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "ERROR: The 'docker' command was not found. Please install a Docker provider (like OrbStack or Docker Desktop) and ensure it's in your PATH."
     exit 1
   fi
 
-  # Check if OrbStack is running using the `orb` command
-  if ! orb status 2>/dev/null | tr -d '\n' | grep -iq "running"; then
-    echo "ERROR: OrbStack is not running. Please start OrbStack and re-run the script."
+  if ! docker info >/dev/null 2>&1; then
+    echo "ERROR: Could not connect to the Docker daemon. Is it running?"
+    if [ "$OS_TYPE" = "Linux" ]; then
+      echo "  On Linux, try running: sudo systemctl start docker"
+      echo "  Also, ensure your user is in the 'docker' group (requires a logout/login after adding)."
+    elif [ "$OS_TYPE" = "Darwin" ]; then
+      echo "  On macOS, please start your Docker provider (e.g., OrbStack, Docker Desktop)."
+    fi
     exit 1
+  fi
+
+  log "Docker daemon is running and accessible."
+}
+
+check_orbstack_macos() {
+  # This is an advisory check specific to macOS if OrbStack is the preferred provider.
+  if [ "$OS_TYPE" != "Darwin" ]; then
+    return
+  fi
+
+  log "Checking if OrbStack is running..."
+  if ! command -v orb >/dev/null 2>&1; then
+    log "Note: OrbStack CLI ('orb') not found. Assuming another Docker provider is in use."
+    return
+  elif ! orb status 2>/dev/null | tr -d '\n' | grep -iq "running"; then
+    log "Warning: OrbStack is installed but does not appear to be running. The script will proceed if another Docker provider is active."
   fi
 
   log "OrbStack is running."
@@ -462,8 +512,10 @@ else
 fi
 
 # Always run prerequisite checks
-check_prerequisites
-check_orbstack
+detect_package_manager
+check_core_tools
+check_docker_environment
+check_orbstack_macos # Advisory check for macOS users
 
 if [ "$ACTION_INSTALL" = true ]; then
   log "Running installation process."
