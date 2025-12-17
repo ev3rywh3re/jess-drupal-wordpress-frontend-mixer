@@ -171,9 +171,10 @@ perform_site_control() {
   log "Performing site control: Target=${site_target}, Start=${do_start}, Stop=${do_stop}"
 
   local sites_to_control=()
+  local valid_sites_pattern=" wordpress drupal frontend "
   if [ "$site_target" = "all" ]; then
     sites_to_control=("wordpress" "drupal" "frontend")
-  elif [[ " wordpress drupal frontend " =~ " ${site_target} " ]]; then
+  elif [[ $valid_sites_pattern =~ \ ${site_target}\  ]]; then
     sites_to_control=("$site_target")
   else
     echo "Error: Invalid site specified for control: '${site_target}'. Must be wordpress, drupal, frontend, or all."
