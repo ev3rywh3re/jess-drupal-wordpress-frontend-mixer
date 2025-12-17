@@ -8,7 +8,7 @@ This project provides the structure and instructions to set up three distinct we
 *   **Drupal Site:** Uses the standard `drupal/recommended-project` Composer template.
 *   **Frontend Site:** A placeholder for a JavaScript framework/library (Vue, Svelte, React, etc.), served statically by DDEV after being built.
 
-The main repository (this one) contains  the setup instructions (README.md) and git .gitignore files along with a setup.sh script. 
+The main repository (this one) contains the setup instructions (README.md) and git .gitignore files along with a setup.sh script. 
 
 The actual code for the WordPress, Drupal, and Frontend sites resides within their respective subdirectories, which are ignored by Git in *this* repository. Please note this if you want to use this for your own projects.
 
@@ -119,7 +119,6 @@ jess-drupal-wordpress-frontend-mixer/
     ├── src/        # Example source code directory
     ├── package.json
     └── ... (other JS project files)
-└──── assets/         # Some base project starting files
 ```
 
 ## Setup Steps
@@ -264,7 +263,8 @@ This uses the standard Composer-based Drupal setup.
 
 5.  **Manage Modules/Themes (Composer - Standard):**
     *   Require modules/themes using Composer (run from the `drupal` directory):
-        ```bash        # Example: ddev composer require drupal/admin_toolbar drupal/gin
+        ```bash
+        # Example: ddev composer require drupal/admin_toolbar drupal/gin
         ```
     *   Enable them via the Drupal UI (`/admin/modules`) or Drush:
         ```bash

@@ -173,11 +173,16 @@ perform_site_control() {
   local sites_to_control=()
   if [ "$site_target" = "all" ]; then
     sites_to_control=("wordpress" "drupal" "frontend")
-  elif [[ " wordpress drupal frontend " =~ " ${site_target} " ]]; then
-    sites_to_control=("$site_target")
   else
-    echo "Error: Invalid site specified for control: '${site_target}'. Must be wordpress, drupal, frontend, or all."
-    exit 1
+    case "$site_target" in
+      wordpress|drupal|frontend)
+        sites_to_control=("$site_target")
+        ;;
+      *)
+        echo "Error: Invalid site specified for control: '${site_target}'. Must be wordpress, drupal, frontend, or all."
+        exit 1
+        ;;
+    esac
   fi
 
   for site_dir_name in "${sites_to_control[@]}"; do
