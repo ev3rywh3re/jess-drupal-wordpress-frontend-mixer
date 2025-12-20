@@ -192,6 +192,8 @@ perform_site_control() {
 }
 
 # --- WordPress Setup ---
+# ... (keep existing header and helper functions)
+
 setup_wordpress() {
   if is_wordpress_installed; then
     log "WordPress is already installed. Skipping setup."
@@ -211,7 +213,10 @@ setup_wordpress() {
   ddev stop --unlist "${WP_PROJECT_NAME}" >/dev/null 2>&1 || true
 
   log "Configuring DDEV for WordPress..."
-  ddev config --project-name="$WP_PROJECT_NAME" --project-type=wordpress --docroot=web
+
+  # Initialize DDEV first
+  ddev config --project-name="$WP_PROJECT_NAME" --project-type=wordpress --docroot=web --create-docroot
+  ddev start
 
   log "Configuring Bedrock .env file..."
   # Ensure .env.example exists, as it's our source.
@@ -241,9 +246,10 @@ setup_wordpress() {
     log "DB_HOST was not found in .env and has been added."
   fi
 
-    log "WordPress .env configured with DDEV values. CRITICAL: You MUST manually add unique salts if they were placeholders or if this is a fresh setup!"
-    log "Verifying .env contents from script's perspective (in $(pwd)):"
-    grep -E "^DB_HOST=|^WP_HOME=" .env || log "WARNING: DB_HOST or WP_HOME not found in .env by grep!"
+  # Check .env file for WP_HOME variable
+  log "WordPress .env configured with DDEV values. CRITICAL: You MUST manually add unique salts if they were placeholders or if this is a fresh setup!"
+  log "Verifying .env contents from script's perspective (in $(pwd)):"
+  grep -E "^DB_HOST=|^WP_HOME=" .env || log "WARNING: DB_HOST or WP_HOME not found in .env by grep!"
 
   local needs_post_start_delay=false
   log "Checking status of ${WP_PROJECT_NAME} DDEV environment..."
@@ -277,6 +283,7 @@ setup_wordpress() {
   fi
 
   log "Installing WordPress core..."
+
   if ! ddev wp --path=web/wp core install --url="$WP_URL" --title="My Bedrock Site" --admin_user=admin --admin_password=password --admin_email=admin@example.com --debug; then
     log "ERROR: WordPress core installation failed. Please check the output above for details from WP-CLI."
     log "A common cause is not updating the salts in the wordpress/.env file. Please ensure they are unique."
@@ -337,7 +344,7 @@ setup_drupal() {
   log "Configuring DDEV for Drupal..."
   ddev config --project-name="$DRUPAL_PROJECT_NAME" --project-type=drupal10 --docroot=web
 
-  local needs_post_start_delay=false
+local needs_post_start_delay=false
   log "Checking status of ${DRUPAL_PROJECT_NAME} DDEV environment..."
   if ddev status 2>/dev/null | grep -q "is running"; then
     log "${DRUPAL_PROJECT_NAME} DDEV environment is already running."
@@ -361,7 +368,7 @@ setup_drupal() {
   log "Ensuring Drush is installed..."
   ddev composer require drush/drush --no-interaction --quiet
 
-  log "Installing Drupal site..."
+  log "Installing Drupal via Drush..."
   ddev drush site:install standard --db-url=mysql://db:db@db/db --site-name="My Drupal Site" --account-name=admin --account-pass=password -y
 
   log "Enabling Drupal JSON:API module..."
