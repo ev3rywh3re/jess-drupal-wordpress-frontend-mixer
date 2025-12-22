@@ -101,6 +101,7 @@ check_core_tools() {
   log "All core tools are installed."
 }
 
+# Checks for docker support on host system.
 check_docker_environment() {
   log "Checking for a running Docker environment..."
 
@@ -123,6 +124,7 @@ check_docker_environment() {
   log "Docker daemon is running and accessible."
 }
 
+# macOS-specific check for OrbStack as Docker provider.
 check_orbstack_macos() {
   # This is an advisory check specific to macOS if OrbStack is the preferred provider.
   if [ "$OS_TYPE" != "Darwin" ]; then
@@ -205,8 +207,7 @@ perform_site_control() {
 }
 
 # --- WordPress Setup ---
-# ... (keep existing header and helper functions)
-
+# WordPress local website setup and installation using Bedrock
 setup_wordpress() {
   if is_wordpress_installed; then
     log "WordPress is already installed. Skipping setup."
