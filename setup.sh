@@ -1,26 +1,35 @@
 #!/bin/bash
+#
+# -e: exit immediately if a command exits with a non-zero status.
+# -u: treat unset variables as an error when substituting.
+# -o pipefail: the return value of a pipeline is the status of the last
+#              command to exit with a non-zero status, or zero if no
+#              command exited with a non-zero status.
+set -euo pipefail
 
-# Exit immediately if a command exits with a non-zero status.
-set -e
-# Treat unset variables as an error when substituting.
-set -u
-# Prevent errors in pipelines from being masked.
-set -o pipefail
+# --- Script Configuration - start ---
 
-# --- Configuration ---
+# WoordPress configuration
 WP_PROJECT_NAME="wordpress-bedrock"
-DRUPAL_PROJECT_NAME="drupal-site"
-FRONTEND_PROJECT_NAME="frontend-app"
-
 WP_URL="https://${WP_PROJECT_NAME}.ddev.site"
+
+# Drupal configuration
+DRUPAL_PROJECT_NAME="drupal-site"
 DRUPAL_URL="https://${DRUPAL_PROJECT_NAME}.ddev.site"
+
+# Frontend configuration
+FRONTEND_PROJECT_NAME="frontend-app"
 FRONTEND_URL="https://${FRONTEND_PROJECT_NAME}.ddev.site"
 
-# --- OS Detection ---
+# --- Operating System Detection for container host ---
 OS_TYPE=$(uname -s)
 PKG_MANAGER=""
 
+# --- Script Configuration - end ---
+
 # --- Helper Functions ---
+
+# --- Log Functions ---
 log() {
   echo "" # Add a newline for readability
   echo "--> $(date +'%T') | $*"
@@ -28,14 +37,18 @@ log() {
 }
 
 # --- Precheck Functions ---
+
+# --- WordPress Precheck Function ---
 is_wordpress_installed() {
   [ -d "wordpress" ] && [ -f "wordpress/.ddev/config.yaml" ]
 }
 
+# --- Drupal Precheck Function ---
 is_drupal_installed() {
   [ -d "drupal" ] && [ -f "drupal/.ddev/config.yaml" ]
 }
 
+# --- Frontend Precheck Function ---
 is_frontend_installed() {
   [ -d "frontend" ] && [ -f "frontend/.ddev/config.yaml" ]
 }
