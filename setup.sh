@@ -101,6 +101,73 @@ check_core_tools() {
   log "All core tools are installed."
 }
 
+# --- Helper Function to Ensure Docker is Running ---
+# This function checks the current Docker context and ensures the corresponding
+# provider (OrbStack or Colima) is running before proceeding.
+ensure_docker_running() {
+  echo "🔎 Checking Docker provider and status..."
+
+  if ! command -v docker &> /dev/null; then
+    echo "❌ Docker CLI is not installed. Please install it first."
+    exit 1
+  fi
+
+  # Get the current docker context to identify the provider
+  local context
+  context=$(docker context show)
+
+  echo "ℹ️ Current Docker context is set to: '$context'"
+
+  case "$context" in
+    orbstack)
+      echo "-> OrbStack detected. Checking status..."
+      # For OrbStack, a successful 'docker ps' indicates it's running.
+      if ! docker ps &> /dev/null; then
+        echo "   OrbStack is not running. Attempting to start..."
+        open -a OrbStack
+        echo "   Waiting for OrbStack to initialize..."
+        # Poll until the Docker daemon is responsive
+        while ! docker ps &> /dev/null; do
+          sleep 2
+        done
+        echo "✅ OrbStack is now running."
+      else
+        echo "✅ OrbStack is already running."
+      fi
+      ;;
+
+    colima)
+      echo "-> Colima detected. Checking status..."
+      # 'colima status' is the specific command to check its state.
+      if ! colima status &> /dev/null | grep -q "Running"; then
+        echo "   Colima is not running. Starting with 'colima start'..."
+        # 'colima start' blocks until the VM is ready.
+        if colima start; then
+            echo "✅ Colima started successfully."
+        else
+            echo "❌ Failed to start Colima. Please check your Colima setup."
+            exit 1
+        fi
+      else
+        echo "✅ Colima is already running."
+      fi
+      ;;
+
+    *)
+      echo "⚠️ Unrecognized Docker context: '$context'."
+      echo "   This script has explicit support for 'orbstack' and 'colima'."
+      echo "   Attempting a generic check..."
+      if ! docker ps &> /dev/null; then
+        echo "❌ Docker daemon is not responsive. Please start your Docker provider and try again."
+        exit 1
+      else
+        echo "✅ Docker daemon is responsive. Proceeding with caution."
+      fi
+      ;;
+  esac
+  echo "" # Add a newline for better readability
+}
+
 # Checks for docker support on host system.
 check_docker_environment() {
   log "Checking for a running Docker environment..."
@@ -540,6 +607,7 @@ fi
 # Always run prerequisite checks
 detect_package_manager
 check_core_tools
+ensure_docker_running
 check_docker_environment
 check_orbstack_macos # Advisory check for macOS users
 
