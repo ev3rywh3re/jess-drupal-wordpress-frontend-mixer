@@ -70,7 +70,7 @@ detect_package_manager() {
 check_core_tools() {
   log "Checking for core tools (ddev, composer, node, npm)..."
   local missing_tools=()
-  local tools=("ddev" "composer" "node" "npm")
+  local tools=("ddev" "composer" "node" "npm" "yq")
 
   for tool in "${tools[@]}"; do
     if ! command -v "$tool" >/dev/null 2>&1; then
@@ -87,10 +87,10 @@ check_core_tools() {
     
     if [ "$PKG_MANAGER" = "apt" ]; then
       echo ""
-      echo "On Debian/Ubuntu, you can try installing some with: sudo apt-get install composer nodejs npm jq"
+      echo "On Debian/Ubuntu, you can try installing some with: sudo apt-get install composer nodejs npm jq yq"
     elif [ "$PKG_MANAGER" = "dnf" ]; then
       echo ""
-      echo "On Fedora, you can try installing some with: sudo dnf install composer nodejs jq"
+      echo "On Fedora, you can try installing some with: sudo dnf install composer nodejs jq yq"
     fi
 
     echo ""
@@ -311,7 +311,7 @@ setup_wordpress() {
       -e "s#^DB_NAME=.*#DB_NAME='db'#" \
       -e "s#^DB_USER=.*#DB_USER='db'#" \
       -e "s#^DB_PASSWORD=.*#DB_PASSWORD='db'#" \
-      -e "s#^DB_HOST=.*#DB_HOST='db'#" \
+      -e "s@^# DB_HOST='localhost'@DB_HOST='db'@" \
       -e "s#^WP_HOME=.*#WP_HOME='${WP_URL}'#" \
       -e "s#^WP_SITEURL=.*#WP_SITEURL='${WP_URL}/wp'#" \
       .env
@@ -458,7 +458,7 @@ setup_frontend() {
 
   if [ ! -f "package.json" ]; then
     log "Initializing Vue project using Vite..."
-    npm create vite@latest . -- --template vue
+    echo "" | npm create vite@latest . -- --template vue
     npm install
   else
     log "package.json exists, running 'npm install'..."
@@ -487,6 +487,7 @@ list_sites() {
   # The -E flag allows for OR logic in grep.
   ddev list | grep -E "NAME|${WP_PROJECT_NAME}|${DRUPAL_PROJECT_NAME}|${FRONTEND_PROJECT_NAME}" || true
 }
+
 
 
 # --- Help Function ---
@@ -558,6 +559,7 @@ if [ "$ACTION_INSTALL" = true ]; then
   log "Running full installation process..."
   setup_wordpress
   setup_drupal
+  rm -rf frontend # Ensure clean frontend install
   setup_frontend
   log "Installation complete. Listing sites..."
   list_sites
