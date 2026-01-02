@@ -181,6 +181,26 @@ echo "ERROR: Could not connect to the Docker daemon. Is it running?"
   log "✅ Docker daemon is now running and accessible."
 }
 
+# --- Helper function to wait for DB connection ---
+wait_for_db() {
+  log "Waiting for database to become ready..."
+  # Poll the database with a simple query until it succeeds.
+  # Timeout after 60 seconds.
+  local counter=0
+  # use ddev to connect to the mysql database for testing
+  while ! ddev mysql -e "SELECT 1" >/dev/null 2>&1; do
+    if [ $counter -ge 60 ]; then
+      log "❌ ERROR: Timed out waiting for the database to become ready. Check 'ddev logs -s db'."
+      exit 1
+    fi
+    printf "."
+    sleep 1
+    ((counter++))
+  done
+  echo ""
+  log "✅ Database is ready."
+}
+
 # --- Site Control Functions ---
 control_ddev_project() {
   local project_dir_name="$1"
@@ -247,15 +267,17 @@ perform_site_control() {
 # --- WordPress Setup ---
 generate_wp_salts() {
   log "Generating and applying WordPress salts..."
-  # Fetch salts from the official Roots API
-  local salts
-  salts=$(curl -sL https://roots.io/salts.html)
+  local raw_salts
+  raw_salts=$(curl -sL https://api.wordpress.org/secret-key/1.1/salt/) # Use the correct WordPress salt API
 
-  if [ -z "$salts" ]; then
-    log "ERROR: Failed to fetch salts from roots.io. Please add them manually to wordpress/.env"
-    # The installation will likely fail later, but this is a clear warning.
+  if [ -z "$raw_salts" ]; then
+    log "ERROR: Failed to fetch salts from api.wordpress.org. Please add them manually to wordpress/.env"
     return
   fi
+
+  # Transform raw salts (define('KEY', 'VALUE');) to Bedrock .env format (KEY='VALUE')
+  local formatted_salts
+  formatted_salts=$(echo "$raw_salts" | sed -E "s/define\('([A-Z_]+)',[[:space:]]*'([^']+)'\);/\1='\2'/g")
 
   # Create a temporary file for the new .env content
   local temp_env
@@ -264,9 +286,9 @@ generate_wp_salts() {
   # Write all lines from the current .env file to the temp file, EXCEPT for the salt lines
   grep -v -E "^(AUTH_KEY|SECURE_AUTH_KEY|LOGGED_IN_KEY|NONCE_KEY|AUTH_SALT|SECURE_AUTH_SALT|LOGGED_IN_SALT|NONCE_SALT)=" .env > "$temp_env"
 
-  # Append the freshly generated salts to the temp file
+  # Append the freshly generated formatted salts to the temp file
   echo "" >> "$temp_env"
-  echo "$salts" >> "$temp_env"
+  echo "$formatted_salts" >> "$temp_env"
 
   # Replace the original .env file with the updated one
   mv "$temp_env" .env
@@ -322,6 +344,8 @@ setup_wordpress() {
 
   log "Starting ${WP_PROJECT_NAME} DDEV environment..."
   ddev start
+
+  wait_for_db
 
   log "Installing WordPress core..."
   if ! ddev wp --path=web/wp core install --url="$WP_URL" --title="My Bedrock Site" --admin_user=admin --admin_password=password --admin_email=admin@example.com; then
@@ -403,35 +427,14 @@ setup_drupal() {
   fi
 
   if [ -f "$DRUPAL_SERVICES_YML" ]; then
-    # Append a CORS configuration block. This is more robust than sed.
-    # The last 'cors.config' block in the file will take precedence.
-    echo "Appending CORS configuration to ${DRUPAL_SERVICES_YML}..."
-    cat << EOF >> "$DRUPAL_SERVICES_YML"
-
-# --- DDEV-generated CORS configuration ---
-# This block was added by the setup script to allow API access from the frontend app.
-parameters:
-  cors.config:
-    enabled: true
-    allowedHeaders:
-      - 'Content-Type'
-      - 'Authorization'
-      - 'X-Requested-With'
-      - 'Accept'
-    allowedMethods:
-      - 'GET'
-      - 'POST'
-      - 'PUT'
-      - 'DELETE'
-      - 'OPTIONS'
-    allowedOrigins:
-      - '${FRONTEND_URL}'
-    exposedHeaders: false
-    maxAge: 0
-    supportsCredentials: true
-# --- End DDEV-generated CORS configuration ---
-EOF
-    log "Drupal CORS configuration appended. Clearing Drupal cache."
+    yq -i '.parameters.cors.config.enabled = true |
+       .parameters.cors.config.allowedHeaders = ["Content-Type", "Authorization", "X-Requested-With", "Accept"] |
+       .parameters.cors.config.allowedMethods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"] |
+       .parameters.cors.config.allowedOrigins = ["'${FRONTEND_URL}'"] |
+       .parameters.cors.config.exposedHeaders = false |
+       .parameters.cors.config.maxAge = 0 |
+       .parameters.cors.config.supportsCredentials = true' "$DRUPAL_SERVICES_YML"
+    log "Drupal CORS configuration updated. Clearing Drupal cache."
     ddev drush cr
   else
     log "ERROR: ${DRUPAL_SERVICES_YML} not found. Cannot configure Drupal CORS."
