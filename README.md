@@ -18,7 +18,7 @@ Before you begin, ensure you have the following installed and configured:
 
 ### A. Docker Environment
 
-You need a working Docker environment that DDEV can use. The setup script will check for a running Docker daemon.
+You need a working Docker environment that DDEV can use. The setup script will check for a running Docker daemon and attempt to start it if it's a recognized provider like OrbStack or Colima.
 
 *   **DDEV-Compatible Docker Provider:** You need a working Docker environment that DDEV can use. Common options include:
     *   OrbStack (macOS)
@@ -84,6 +84,8 @@ brew install jq # Optional but recommended
 ```
 
 #### On Fedora Linux
+
+Follow the official installation instructions for Docker, then install the other tools.
 
 ```bash
 # Install DDEV (official script)
@@ -274,6 +276,8 @@ This uses the standard Composer-based Drupal setup.
 
 6.  **Return to Main Project Directory:**
     ```bash
+    ddev drush en jsonapi -y
+    # Manually edit web/sites/default/services.yml for CORS
     cd ..
     ```
 
@@ -330,13 +334,15 @@ This sets up DDEV to serve the *built static assets* of a JavaScript application
 
 7.  **Return to Main Project Directory:**
     ```bash
+    ddev start
     cd ..
     ```
 
 ## Usage and Management
 
 *   **Navigate:** To work on a specific site, `cd` into its directory (`wordpress`, `drupal`, `frontend`).
-*   **Start/Stop:**
+*   **Control with Script:** Use `./setup.sh --start`, `--stop`, and `--list`.
+*   **Control Manually:**
     *   `ddev start`: Start the DDEV project for the site in the current directory.
     *   `ddev stop`: Stop the DDEV project for the site in the current directory.
     *   `ddev stop --all`: Stop all running DDEV projects on your machine.
@@ -356,7 +362,7 @@ This sets up DDEV to serve the *built static assets* of a JavaScript application
 ## Site Interaction
 
 *   **Browser:** You can open all site URLs in your browser simultaneously.
-*   **Backend-to-Backend:** Code within one site (e.g., PHP in WordPress) can make HTTP requests (e.g., using cURL or Guzzle) to another site using its full DDEV URL (e.g., `https://drupal-site.ddev.site`). DDEV handles the internal network routing between containers.
+**Backend-to-Backend:** Code within one site (e.g., PHP in WordPress) can make HTTP requests (e.g., using cURL or Guzzle) to another site using its full DDEV URL (e.g., `https://drupal-site.ddev.site`). DDEV handles the internal network routing between containers.
 *   **Frontend-to-Backend (API Calls):** Your JavaScript frontend app (running in the browser, loaded from `https://frontend-app.ddev.site`) can make API calls (e.g., using `fetch` or `axios`) to the WordPress or Drupal sites using their full DDEV URLs (e.g., `https://wordpress-bedrock.ddev.site/wp-json/wp/v2/posts` or `https://drupal-site.ddev.site/jsonapi`).
     *   **CORS:** You will almost certainly need to configure **Cross-Origin Resource Sharing (CORS)** headers on the WordPress and/or Drupal sites. This tells the browser that it's okay for JavaScript loaded from `frontend-app.ddev.site` to request resources from `wordpress-bedrock.ddev.site` or `drupal-site.ddev.site`.
         *   **WordPress:** Look into adding headers via your theme's `functions.php`, a custom plugin, or dedicated CORS plugins. For the REST API, filters like `rest_pre_serve_request` or `rest_send_cors_headers` can be used.
@@ -366,3 +372,7 @@ This sets up DDEV to serve the *built static assets* of a JavaScript application
 
 *   **Frontend Framework:** Replace the example `npm create vite...` command in the Frontend setup with the initialization command for your chosen framework/library. Remember to update the `ddev config --docroot` if the build output directory name is different from `dist`.
 *   **Project Names:** Feel free to change the `--project-name` arguments during `ddev config` for different DDEV hostnames. Just ensure you update the URLs accordingly (e.g., in Bedrock's `.env` file and the `--url` parameter during WP install).
+
+*   **Backend-to-Backend:** Code within one site (e.g., PHP in WordPress) can make HTTP requests (e.g., using cURL or Guzzle) to another site using its full DDEV URL (e.g., `https://drupal-site.ddev.site`).
+*   **Frontend-to-Backend (API Calls):** Your JavaScript frontend app can make API calls (e.g., using `fetch` or `axios`) to the WordPress or Drupal sites using their full DDEV URLs.
+    *   **CORS:** The `setup.sh --install` command automatically configures the necessary **Cross-Origin Resource Sharing (CORS)** headers on both WordPress and Drupal to allow requests from the frontend application. If you install manually, you will need to configure this yourself.

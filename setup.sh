@@ -105,14 +105,20 @@ check_core_tools() {
 # This function checks the current Docker context and ensures the corresponding
 # provider (OrbStack or Colima) is running before proceeding.
 ensure_docker_running() {
-  echo "🔎 Checking Docker provider and status..."
+  log "Checking Docker provider and status..."
 
   if ! command -v docker &> /dev/null; then
-    echo "❌ Docker CLI is not installed. Please install it first."
+    echo "❌ Docker CLI is not installed. Please install a compatible provider (e.g., OrbStack, Docker Desktop) and ensure the 'docker' command is in your PATH."
     exit 1
   fi
 
-  # Get the current docker context to identify the provider
+  # First, try a quiet `docker info` as a fast path. If it succeeds, we're good.
+  if docker info >/dev/null 2>&1; then
+    log "✅ Docker daemon is running and accessible."
+    return
+  fi
+
+  log "Could not connect to Docker daemon. Will check for known DDEV providers..."
   local context
   context=$(docker context show)
 
