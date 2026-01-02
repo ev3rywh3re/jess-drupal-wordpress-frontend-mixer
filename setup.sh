@@ -70,7 +70,7 @@ detect_package_manager() {
 check_core_tools() {
   log "Checking for core tools (ddev, composer, node, npm)..."
   local missing_tools=()
-  local tools=("ddev" "composer" "node" "npm")
+  local tools=("ddev" "composer" "node" "npm" "yq")
 
   for tool in "${tools[@]}"; do
     if ! command -v "$tool" >/dev/null 2>&1; then
@@ -87,10 +87,10 @@ check_core_tools() {
     
     if [ "$PKG_MANAGER" = "apt" ]; then
       echo ""
-      echo "On Debian/Ubuntu, you can try installing some with: sudo apt-get install composer nodejs npm jq"
+      echo "On Debian/Ubuntu, you can try installing some with: sudo apt-get install composer nodejs npm jq yq"
     elif [ "$PKG_MANAGER" = "dnf" ]; then
       echo ""
-      echo "On Fedora, you can try installing some with: sudo dnf install composer nodejs jq"
+      echo "On Fedora, you can try installing some with: sudo dnf install composer nodejs jq yq"
     fi
 
     echo ""
@@ -105,14 +105,20 @@ check_core_tools() {
 # This function checks the current Docker context and ensures the corresponding
 # provider (OrbStack or Colima) is running before proceeding.
 ensure_docker_running() {
-  echo "🔎 Checking Docker provider and status..."
+  log "Checking Docker provider and status..."
 
   if ! command -v docker &> /dev/null; then
-    echo "❌ Docker CLI is not installed. Please install it first."
+    echo "❌ Docker CLI is not installed. Please install a compatible provider (e.g., OrbStack, Docker Desktop) and ensure the 'docker' command is in your PATH."
     exit 1
   fi
 
-  # Get the current docker context to identify the provider
+  # First, try a quiet `docker info` as a fast path. If it succeeds, we're good.
+  if docker info >/dev/null 2>&1; then
+    log "✅ Docker daemon is running and accessible."
+    return
+  fi
+
+  log "Could not connect to Docker daemon. Will check for known DDEV providers..."
   local context
   context=$(docker context show)
 
@@ -120,93 +126,79 @@ ensure_docker_running() {
 
   case "$context" in
     orbstack)
-      echo "-> OrbStack detected. Checking status..."
-      # For OrbStack, a successful 'docker ps' indicates it's running.
-      if ! docker ps &> /dev/null; then
-        echo "   OrbStack is not running. Attempting to start..."
+      if [ "$OS_TYPE" = "Darwin" ]; then
+        log "-> OrbStack detected. Attempting to start..."
         open -a OrbStack
-        echo "   Waiting for OrbStack to initialize..."
+        log "   Waiting for OrbStack to initialize..."
         # Poll until the Docker daemon is responsive
-        while ! docker ps &> /dev/null; do
+        while ! docker info &> /dev/null; do
+          printf "."
           sleep 2
         done
-        echo "✅ OrbStack is now running."
+        echo ""
+        log "✅ OrbStack is now running."
       else
-        echo "✅ OrbStack is already running."
+        log "⚠️ OrbStack context detected, but this is not macOS. Manual start of Docker is required."
       fi
       ;;
 
     colima)
-      echo "-> Colima detected. Checking status..."
-      # 'colima status' is the specific command to check its state.
+      log "-> Colima detected. Attempting to start..."
       if ! colima status &> /dev/null | grep -q "Running"; then
-        echo "   Colima is not running. Starting with 'colima start'..."
-        # 'colima start' blocks until the VM is ready.
         if colima start; then
-            echo "✅ Colima started successfully."
+            log "✅ Colima started successfully."
         else
-            echo "❌ Failed to start Colima. Please check your Colima setup."
+            log "❌ Failed to start Colima. Please check your Colima setup."
             exit 1
         fi
-      else
-        echo "✅ Colima is already running."
       fi
       ;;
 
     *)
-      echo "⚠️ Unrecognized Docker context: '$context'."
-      echo "   This script has explicit support for 'orbstack' and 'colima'."
-      echo "   Attempting a generic check..."
-      if ! docker ps &> /dev/null; then
-        echo "❌ Docker daemon is not responsive. Please start your Docker provider and try again."
-        exit 1
-      else
-        echo "✅ Docker daemon is responsive. Proceeding with caution."
+      log "-> Unrecognized or default Docker context: '$context'."
+      if [ "$OS_TYPE" = "Linux" ]; then
+        echo "  On Linux, try running: sudo systemctl start docker"
+        echo "  Also, ensure your user is in the 'docker' group (requires a logout/login after adding)."
+      elif [ "$OS_TYPE" = "Darwin" ]; then
+        echo "  On macOS, please start your Docker application (e.g., OrbStack, Docker Desktop)."
       fi
       ;;
   esac
-  echo "" # Add a newline for better readability
-}
 
-# Checks for docker support on host system.
-check_docker_environment() {
-  log "Checking for a running Docker environment..."
-
-  if ! command -v docker >/dev/null 2>&1; then
-    echo "ERROR: The 'docker' command was not found. Please install a Docker provider (like OrbStack or Docker Desktop) and ensure it's in your PATH."
-    exit 1
-  fi
-
+  # Final check after attempting to start providers
   if ! docker info >/dev/null 2>&1; then
-    echo "ERROR: Could not connect to the Docker daemon. Is it running?"
+echo "ERROR: Could not connect to the Docker daemon. Is it running?"
     if [ "$OS_TYPE" = "Linux" ]; then
       echo "  On Linux, try running: sudo systemctl start docker"
       echo "  Also, ensure your user is in the 'docker' group (requires a logout/login after adding)."
     elif [ "$OS_TYPE" = "Darwin" ]; then
       echo "  On macOS, please start your Docker provider (e.g., OrbStack, Docker Desktop)."
     fi
+    log "❌ ERROR: Docker daemon is still not responsive after checks. Please start your Docker provider manually and try again."
     exit 1
   fi
 
-  log "Docker daemon is running and accessible."
+  log "✅ Docker daemon is now running and accessible."
 }
 
-# macOS-specific check for OrbStack as Docker provider.
-check_orbstack_macos() {
-  # This is an advisory check specific to macOS if OrbStack is the preferred provider.
-  if [ "$OS_TYPE" != "Darwin" ]; then
-    return
-  fi
-
-  log "Checking if OrbStack is running..."
-  if ! command -v orb >/dev/null 2>&1; then
-    log "Note: OrbStack CLI ('orb') not found. Assuming another Docker provider is in use."
-    return
-  elif ! orb status 2>/dev/null | tr -d '\n' | grep -iq "running"; then
-    log "Warning: OrbStack is installed but does not appear to be running. The script will proceed if another Docker provider is active."
-  fi
-
-  log "OrbStack is running."
+# --- Helper function to wait for DB connection ---
+wait_for_db() {
+  log "Waiting for database to become ready..."
+  # Poll the database with a simple query until it succeeds.
+  # Timeout after 60 seconds.
+  local counter=0
+  # use ddev to connect to the mysql database for testing
+  while ! ddev mysql -e "SELECT 1" >/dev/null 2>&1; do
+    if [ $counter -ge 60 ]; then
+      log "❌ ERROR: Timed out waiting for the database to become ready. Check 'ddev logs -s db'."
+      exit 1
+    fi
+    printf "."
+    sleep 1
+    ((counter++))
+  done
+  echo ""
+  log "✅ Database is ready."
 }
 
 # --- Site Control Functions ---
@@ -272,8 +264,38 @@ perform_site_control() {
     control_ddev_project "$site_dir_name" "$friendly_name" "$do_start" "$do_stop"
   done
 }
-
 # --- WordPress Setup ---
+generate_wp_salts() {
+  log "Generating and applying WordPress salts..."
+  local raw_salts
+  raw_salts=$(curl -sL https://api.wordpress.org/secret-key/1.1/salt/) # Use the correct WordPress salt API
+
+  if [ -z "$raw_salts" ]; then
+    log "ERROR: Failed to fetch salts from api.wordpress.org. Please add them manually to wordpress/.env"
+    return
+  fi
+
+  # Transform raw salts (define('KEY', 'VALUE');) to Bedrock .env format (KEY='VALUE')
+  local formatted_salts
+  formatted_salts=$(echo "$raw_salts" | sed -E "s/define\('([A-Z_]+)',[[:space:]]*'([^']+)'\);/\1='\2'/g")
+
+  # Create a temporary file for the new .env content
+  local temp_env
+  temp_env=$(mktemp)
+
+  # Write all lines from the current .env file to the temp file, EXCEPT for the salt lines
+  grep -v -E "^(AUTH_KEY|SECURE_AUTH_KEY|LOGGED_IN_KEY|NONCE_KEY|AUTH_SALT|SECURE_AUTH_SALT|LOGGED_IN_SALT|NONCE_SALT)=" .env > "$temp_env"
+
+  # Append the freshly generated formatted salts to the temp file
+  echo "" >> "$temp_env"
+  echo "$formatted_salts" >> "$temp_env"
+
+  # Replace the original .env file with the updated one
+  mv "$temp_env" .env
+
+  log "✅ WordPress salts have been automatically generated and applied."
+}
+
 # WordPress local website setup and installation using Bedrock
 setup_wordpress() {
   if is_wordpress_installed; then
@@ -283,7 +305,7 @@ setup_wordpress() {
 
   log "Setting up WordPress (Bedrock)..."
   if [ -d "wordpress" ]; then
-    log "Warning: 'wordpress' directory already exists. Skipping creation."
+    log "Warning: 'wordpress' directory already exists. Skipping 'composer create-project'."
   else
     composer create-project roots/bedrock wordpress
   fi
@@ -295,81 +317,64 @@ setup_wordpress() {
 
   log "Configuring DDEV for WordPress..."
 
-  # Initialize DDEV first
   ddev config --project-name="$WP_PROJECT_NAME" --project-type=wordpress --docroot=web --create-docroot
-  ddev start
+
+  log "Injecting DDEV wp-config-ddev.php include into web/wp-config.php..."
+  SNIPPET_FILE=$(mktemp)
+  cat <<'EOF_SNIPPET' > "$SNIPPET_FILE"
+// Include for ddev-managed settings in wp-config-ddev.php.
+$ddev_settings = dirname(__FILE__) . '/wp-config-ddev.php';
+if (is_readable($ddev_settings) && !defined('DB_USER')) {
+  require_once($ddev_settings);
+}
+
+EOF_SNIPPET
+  sed -i.bak "/require_once ABSPATH . 'wp-settings.php';/r $SNIPPET_FILE" web/wp-config.php
+  rm "$SNIPPET_FILE"
+  rm -f wordpress/web/wp-config.php.bak
 
   log "Configuring Bedrock .env file..."
-  # Ensure .env.example exists, as it's our source.
   if [ ! -f ".env.example" ]; then
-    log "ERROR: .env.example is missing in $(pwd). Cannot configure WordPress. 'composer create-project roots/bedrock' might have failed or changed its output."
+    log "ERROR: .env.example is missing in $(pwd). Cannot configure WordPress."
     exit 1
   fi
 
-  log "Creating/refreshing .env from .env.example to ensure all base settings are present for DDEV."
-  cp .env.example .env # This will overwrite .env if it exists, ensuring a clean base.
+  cp .env.example .env
 
-  log "Applying DDEV-specific values to .env..."
+  log "Applying DDEV-specific database and URL values to .env..."
   # Using '#' as the sed delimiter because $WP_URL contains '/' characters.
   sed -i.bak \
       -e "s#^DB_NAME=.*#DB_NAME='db'#" \
       -e "s#^DB_USER=.*#DB_USER='db'#" \
       -e "s#^DB_PASSWORD=.*#DB_PASSWORD='db'#" \
-      -e "s#^DB_HOST=.*#DB_HOST='db'#" \
+      -e "s@^# DB_HOST='localhost'@DB_HOST='db'@" \
       -e "s#^WP_HOME=.*#WP_HOME='${WP_URL}'#" \
       -e "s#^WP_SITEURL=.*#WP_SITEURL='${WP_URL}/wp'#" \
       .env
-  rm .env.bak # Remove the backup file created by sed
+  rm .env.bak
 
-  # Check if DB_HOST is present; if not, append it.
-  if ! grep -q "^DB_HOST=" .env; then
-    echo "DB_HOST='db'" >> .env
-    log "DB_HOST was not found in .env and has been added."
-  fi
+  # Automatically generate and apply salts
+  generate_wp_salts
 
-  # Check .env file for WP_HOME variable
-  log "WordPress .env configured with DDEV values. CRITICAL: You MUST manually add unique salts if they were placeholders or if this is a fresh setup!"
-  log "Verifying .env contents from script's perspective (in $(pwd)):"
-  grep -E "^DB_HOST=|^WP_HOME=" .env || log "WARNING: DB_HOST or WP_HOME not found in .env by grep!"
+  log "Starting ${WP_PROJECT_NAME} DDEV environment..."
+  ddev start
 
-  local needs_post_start_delay=false
-  log "Checking status of ${WP_PROJECT_NAME} DDEV environment..."
-  # `ddev status` run inside the project dir will refer to that project.
-  # We grep for "is running" which is part of DDEV's status message for a running project.
-  if ddev status 2>/dev/null | grep -q "is running"; then
-    log "${WP_PROJECT_NAME} DDEV environment is already running."
-  else
-    log "Starting ${WP_PROJECT_NAME} DDEV environment..."
-    if ! ddev start; then
-      log "ERROR: Failed to start ${WP_PROJECT_NAME} DDEV environment."
-      exit 1 # Critical failure for install process
-    fi
-    needs_post_start_delay=true
-  fi
-
-  if [ "$needs_post_start_delay" = true ]; then
-    log "Waiting a few seconds for services to initialize after fresh start..."
-    sleep 5
-  else
-    log "Brief pause for already running services..."
-    sleep 2 # Shorter pause if it was already running
-  fi
+  # Wait for the database to be ready to prevent race conditions.
+  wait_for_db
 
   log "Ensuring a clean database for WordPress installation..."
-  # DDEV ensures 'db' database exists. We drop and recreate it to ensure it's empty.
   if ! ddev mysql -e "DROP DATABASE IF EXISTS db; CREATE DATABASE db;" >/dev/null 2>&1; then
     log "ERROR: Failed to drop/create the database for WordPress. This is a critical step."
-    log "Please check DDEV service status and logs for the '${WP_PROJECT_NAME}' project (e.g., 'ddev logs -s db')."
     exit 1
   fi
 
   log "Installing WordPress core..."
-
-  if ! ddev wp --path=web/wp core install --url="$WP_URL" --title="My Bedrock Site" --admin_user=admin --admin_password=password --admin_email=admin@example.com --debug; then
-    log "ERROR: WordPress core installation failed. Please check the output above for details from WP-CLI."
-    log "A common cause is not updating the salts in the wordpress/.env file. Please ensure they are unique."
+  if ! ddev wp --path=web/wp core install --url="$WP_URL" --title="My Bedrock Site" --admin_user=admin --admin_password=password --admin_email=admin@example.com; then
+    log "ERROR: WordPress core installation failed. Please check the output above."
+    log "Common causes include an unresponsive Docker environment or incorrect .env values."
     exit 1
   fi
+  
   log "Configuring WordPress CORS (via mu-plugin)..."
   mkdir -p web/app/mu-plugins
   cat << EOF > web/app/mu-plugins/ddev_cors_setup.php
@@ -382,7 +387,7 @@ setup_wordpress() {
 add_action( 'rest_api_init', function() {
     remove_filter( 'rest_pre_serve_request', 'rest_send_cors_headers' );
     add_filter( 'rest_pre_serve_request', function( \$value ) {
-        \$frontend_origin = '${FRONTEND_URL}';
+        \$frontend_origin = '${FRONTEND_URL}'; // Injected by setup script
         if ( isset( \$_SERVER['HTTP_ORIGIN'] ) && \$_SERVER['HTTP_ORIGIN'] === \$frontend_origin ) {
             header( 'Access-Control-Allow-Origin: ' . \$frontend_origin );
             header( 'Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS' );
@@ -400,7 +405,7 @@ EOF
   log "WordPress CORS mu-plugin created."
 
   cd ..
-  log "WordPress setup complete."
+  log "✅ WordPress setup complete."
 }
 
 # --- Drupal Setup ---
@@ -412,39 +417,23 @@ setup_drupal() {
 
   log "Setting up Drupal..."
   if [ -d "drupal" ]; then
-    log "Warning: 'drupal' directory already exists. Skipping creation."
+    log "Warning: 'drupal' directory already exists. Skipping 'composer create-project'."
   else
     composer create-project drupal/recommended-project drupal --no-interaction
   fi
   cd drupal
 
   log "Attempting to unlist any existing DDEV project named '${DRUPAL_PROJECT_NAME}' associated with this directory..."
-  # Suppress output and ignore errors
   ddev stop --unlist "${DRUPAL_PROJECT_NAME}" >/dev/null 2>&1 || true
 
   log "Configuring DDEV for Drupal..."
   ddev config --project-name="$DRUPAL_PROJECT_NAME" --project-type=drupal10 --docroot=web
 
-local needs_post_start_delay=false
-  log "Checking status of ${DRUPAL_PROJECT_NAME} DDEV environment..."
-  if ddev status 2>/dev/null | grep -q "is running"; then
-    log "${DRUPAL_PROJECT_NAME} DDEV environment is already running."
-  else
-    log "Starting ${DRUPAL_PROJECT_NAME} DDEV environment..."
-    if ! ddev start; then
-      log "ERROR: Failed to start ${DRUPAL_PROJECT_NAME} DDEV environment."
-      exit 1
-    fi
-    needs_post_start_delay=true
-  fi
+  log "Starting ${DRUPAL_PROJECT_NAME} DDEV environment..."
+  ddev start
 
-  if [ "$needs_post_start_delay" = true ]; then
-    log "Waiting a few seconds for Drupal services to initialize after fresh start..."
-    sleep 5
-  else
-    log "Brief pause for already running Drupal services..."
-    sleep 2
-  fi
+  # Wait for the database to be ready to prevent race conditions.
+  wait_for_db
 
   log "Ensuring Drush is installed..."
   ddev composer require drush/drush --no-interaction --quiet
@@ -457,53 +446,26 @@ local needs_post_start_delay=false
 
   log "Configuring Drupal CORS..."
   DRUPAL_SERVICES_YML="web/sites/default/services.yml"
-  DRUPAL_DEFAULT_SERVICES_YML="web/sites/default/default.services.yml"
-  if [ ! -f "$DRUPAL_SERVICES_YML" ] && [ -f "$DRUPAL_DEFAULT_SERVICES_YML" ]; then
-    cp "$DRUPAL_DEFAULT_SERVICES_YML" "$DRUPAL_SERVICES_YML"
+  if [ ! -f "$DRUPAL_SERVICES_YML" ] && [ -f "web/sites/default/default.services.yml" ]; then
+    cp "web/sites/default/default.services.yml" "$DRUPAL_SERVICES_YML"
   fi
 
   if [ -f "$DRUPAL_SERVICES_YML" ]; then
-    log "Modifying $DRUPAL_SERVICES_YML for CORS..."
-    # Escape FRONTEND_URL for sed replacement. Handles typical URL characters.
-    # For YAML single-quoted strings, a single quote ' is escaped as ''.
-    local frontend_url_escaped
-    frontend_url_escaped=$(printf '%s\n' "$FRONTEND_URL" | sed -e 's/[\/&]/\\&/g' -e "s/'/''/g")
-
-    # This sed command attempts to uncomment and configure CORS settings.
-    # It assumes a structure similar to Drupal's default.services.yml where
-    # 'parameters:' exists, and 'cors.config:' is commented out under it.
-    # Heuristic block matching is used. Review $DRUPAL_SERVICES_YML if issues persist.
-    sed -i.bak -E \
-      -e "/^[[:space:]]*##*[[:space:]]*parameters:/s|^([[:space:]]*)##*([[:space:]]*parameters:)|\1\2|" \
-      -e "/^[[:space:]]*parameters:/,/^([^[:space:]]|$)/{ \
-            /^[[:space:]]*##*[[:space:]]*cors\.config:/s|^([[:space:]]*)##*([[:space:]]*cors\.config:)|\1\2| ; \
-            /^[[:space:]]*cors\.config:/,/^([[:space:]]{0,2}[^[:space:]#]|$)/{ \
-                s|^([[:space:]]*)##*([[:space:]]*enabled:[[:space:]]*)(false|true)|\1\2true| ; \
-                s|^([[:space:]]*enabled:[[:space:]]*)(false|true)|\1true| ; \
-                s|^([[:space:]]*)##*([[:space:]]*allowedOrigins:[[:space:]]*).*|\1allowedOrigins: ['${frontend_url_escaped}']| ; \
-                s|^([[:space:]]*allowedOrigins:[[:space:]]*).*|\1allowedOrigins: ['${frontend_url_escaped}']| ; \
-                s|^([[:space:]]*)##*([[:space:]]*allowedMethods:[[:space:]]*).*|\1allowedMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']| ; \
-                s|^([[:space:]]*allowedMethods:[[:space:]]*).*|\1allowedMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']| ; \
-                s|^([[:space:]]*)##*([[:space:]]*allowedHeaders:[[:space:]]*).*|\1allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept']| ; \
-                s|^([[:space:]]*allowedHeaders:[[:space:]]*).*|\1allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept']| ; \
-                s|^([[:space:]]*)##*([[:space:]]*exposedHeaders:[[:space:]]*).*|\1exposedHeaders: false| ; \
-                s|^([[:space:]]*exposedHeaders:[[:space:]]*).*|\1exposedHeaders: false| ; \
-                s|^([[:space:]]*)##*([[:space:]]*maxAge:[[:space:]]*).*|\1maxAge: 0| ; \
-                s|^([[:space:]]*maxAge:[[:space:]]*).*|\1maxAge: 0| ; \
-                s|^([[:space:]]*)##*([[:space:]]*supportsCredentials:[[:space:]]*).*|\1supportsCredentials: false| ; \
-                s|^([[:space:]]*supportsCredentials:[[:space:]]*).*|\1supportsCredentials: false| ; \
-            } \
-         }" "$DRUPAL_SERVICES_YML"
-
-    rm -f "${DRUPAL_SERVICES_YML}.bak" # Remove backup if sed was successful
-    log "Drupal CORS configuration modification attempted. Clearing Drupal cache."
+    yq -i '.parameters.cors.config.enabled = true |
+       .parameters.cors.config.allowedHeaders = ["Content-Type", "Authorization", "X-Requested-With", "Accept"] |
+       .parameters.cors.config.allowedMethods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"] |
+       .parameters.cors.config.allowedOrigins = ["'${FRONTEND_URL}'"] |
+       .parameters.cors.config.exposedHeaders = false |
+       .parameters.cors.config.maxAge = 0 |
+       .parameters.cors.config.supportsCredentials = true' "$DRUPAL_SERVICES_YML"
+    log "Drupal CORS configuration updated. Clearing Drupal cache."
     ddev drush cr
   else
-    log "ERROR: $DRUPAL_SERVICES_YML not found. Cannot configure Drupal CORS."
+    log "ERROR: ${DRUPAL_SERVICES_YML} not found. Cannot configure Drupal CORS."
   fi
 
   cd ..
-  log "Drupal setup complete."
+  log "✅ Drupal setup complete."
 }
 
 # --- Frontend Setup ---
@@ -515,7 +477,7 @@ setup_frontend() {
 
   log "Setting up Frontend..."
   if [ -d "frontend" ]; then
-    log "Warning: 'frontend' directory already exists. Skipping creation."
+    log "Warning: 'frontend' directory already exists. Assuming it's set up."
   else
     mkdir frontend
   fi
@@ -523,128 +485,138 @@ setup_frontend() {
 
   if [ ! -f "package.json" ]; then
     log "Initializing Vue project using Vite..."
-    npm create vite@latest . -- --template vue
+    echo "" | npm create vite@latest . -- --template vue
     npm install
   else
+    log "package.json exists, running 'npm install'..."
     npm install
   fi
 
+  log "Building static assets for production..."
   npm run build
 
   log "Attempting to unlist any existing DDEV project named '${FRONTEND_PROJECT_NAME}' associated with this directory..."
-  # Suppress output and ignore errors
   ddev stop --unlist "${FRONTEND_PROJECT_NAME}" >/dev/null 2>&1 || true
 
   log "Configuring DDEV for Frontend..."
   ddev config --project-name="$FRONTEND_PROJECT_NAME" --project-type=php --docroot=dist --webserver-type=nginx-fpm
 
-  log "Checking status of ${FRONTEND_PROJECT_NAME} DDEV environment..."
-  if ddev status 2>/dev/null | grep -q "is running"; then
-    log "${FRONTEND_PROJECT_NAME} DDEV environment is already running."
-  else
-    log "Starting ${FRONTEND_PROJECT_NAME} DDEV environment..."
-    if ! ddev start; then
-      log "ERROR: Failed to start ${FRONTEND_PROJECT_NAME} DDEV environment."
-      exit 1
-    fi
-    # Frontend doesn't have a DB install step, so less critical for long sleep,
-    # but good to ensure webserver is up.
-    log "Waiting a moment for frontend services..."
-    sleep 3
-  fi
+  log "Starting ${FRONTEND_PROJECT_NAME} DDEV environment..."
+  ddev start
 
   cd ..
-  log "Frontend setup complete."
+  log "✅ Frontend setup complete."
 }
+# --- Site Listing ---
+list_sites() {
+  log "Listing DDEV project statuses..."
+  # Use ddev list and pipe to grep to only show our projects.
+  # The -E flag allows for OR logic in grep.
+  ddev list | grep -E "NAME|${WP_PROJECT_NAME}|${DRUPAL_PROJECT_NAME}|${FRONTEND_PROJECT_NAME}" || true
+}
+
 
 # --- Help Function ---
 show_help() {
-  echo "Usage: $0 [options]"
+  echo "Usage: $0 [command]"
   echo ""
-  echo "Options:"
-  echo "  --help                   Show this help message"
-  echo "  --install                Run the full installation process after checks."
-  echo "  --site=<name|all>        Specify the site to control (wordpress, drupal, frontend, or all)."
-  echo "  --start                  Start the specified DDEV project(s)."
-  echo "  --stop                   Stop the specified DDEV project(s)."
+  echo "A script to automate the setup and control of a multi-site DDEV environment."
+  echo ""
+  echo "Commands:"
+  echo "  --install                Run the full, first-time installation for all sites (WordPress, Drupal, Frontend)."
+  echo "  --start --site=<name>    Start the specified DDEV project. <name> can be 'wordpress', 'drupal', 'frontend', or 'all'."
+  echo "  --stop --site=<name>     Stop the specified DDEV project. <name> can be 'wordpress', 'drupal', 'frontend', or 'all'."
+  echo "  --list                   List the status and URLs of all projects managed by this script."
+  echo "  --help                   Show this help message."
   echo ""
   echo "Examples:"
-  echo "  $0 --help                 Show this help message."
-  echo "  $0                       Run checks only."
-  echo "  $0 --install              Install all sites."
-  echo "  $0 --site=wordpress --start  Start the WordPress site."
+  echo "  $0 --install                   # Install all three sites from scratch."
+  echo "  $0 --start --site=wordpress    # Start only the WordPress DDEV project."
+  echo "  $0 --stop --site=all           # Stop all three DDEV projects."
+  echo "  $0 --list                      # Show project status and URLs."
+  echo "  $0                             # With no command, runs checks and shows this help."
 }
+
 # --- Main Script ---
 # Initialize control flags
 SITE_TO_CONTROL=""
 ACTION_START=false
 ACTION_STOP=false
 ACTION_INSTALL=false
+ACTION_LIST=false
+ACTION_HELP=false
 
-# Parse arguments
-if [ "$#" -eq 0 ]; then
-  # No arguments: Default to checks only
-  log "No arguments provided. Running checks only."
-elif [[ "$1" == "--help" ]]; then
+# Parse arguments. If --help is found, show help and exit immediately.
+for arg in "$@"; do
+  if [ "$arg" == "--help" ]; then
     show_help
     exit 0
+  fi
+done
+
+# If we're still here, parse arguments properly.
+if [ "$#" -eq 0 ]; then
+  # No arguments: Default to checks and help
+  log "No command provided. Running prerequisite checks and then displaying help."
+  ACTION_HELP=true
 else
-    while [[ "$#" -gt 0 ]]; do
-        case $1 in
-            --site=*) SITE_TO_CONTROL="${1#*=}"; shift ;;
-            --start) ACTION_START=true; shift ;;
-            --stop) ACTION_STOP=true; shift ;;
-            --install) ACTION_INSTALL=true; shift ;;
-            *)
-                echo "Unknown parameter passed: $1"
-                show_help
-                exit 1
-                ;;
-        esac
-    done
+  while [[ "$#" -gt 0 ]]; do
+      case $1 in
+          --site=*) SITE_TO_CONTROL="${1#*=}"; shift ;;
+          --start) ACTION_START=true; shift ;;
+          --stop) ACTION_STOP=true; shift ;;
+          --install) ACTION_INSTALL=true; shift ;;
+          --list) ACTION_LIST=true; shift ;;
+          *)
+              echo "Unknown parameter passed: $1"
+              show_help
+              exit 1
+              ;;
+      esac
+  done
 fi
 
-# Always run prerequisite checks
+# Run prerequisite checks for all commands except --help (which exited above).
 detect_package_manager
 check_core_tools
 ensure_docker_running
-check_docker_environment
-check_orbstack_macos # Advisory check for macOS users
 
 if [ "$ACTION_INSTALL" = true ]; then
-  log "Running installation process."
+  log "Running full installation process..."
   setup_wordpress
   setup_drupal
+  rm -rf frontend # Ensure clean frontend install
   setup_frontend
+  log "Installation complete. Listing sites..."
+  list_sites
 elif [ "$ACTION_START" = true ] || [ "$ACTION_STOP" = true ]; then
   if [ -z "$SITE_TO_CONTROL" ]; then
-    echo "Error: --site must be specified with --start or --stop."
-    echo "Usage: $0 [--site=<wordpress|drupal|frontend|all>] [--start] [--stop]"
+    echo "Error: --site=<name|all> must be specified with --start or --stop."
+    show_help
     exit 1
   fi
   perform_site_control "$SITE_TO_CONTROL" "$ACTION_START" "$ACTION_STOP"
-else
-  log "Checks complete. No installation or specific control actions were requested."
+elif [ "$ACTION_LIST" = true ]; then
+  list_sites
+else # This 'else' will now cover the case where no arguments were provided initially (ACTION_HELP is true implicitly)
+     # or if some other unknown argument path was taken and ACTION_HELP somehow didn't get set.
+  log "Prerequisite checks complete. Displaying help."
+  show_help
 fi
 
 # --- Final Summary ---
 log "Setup Script Finished!"
-echo ""
 if [ "$ACTION_INSTALL" = true ]; then
+  echo ""
   echo "Project URLs (after installation):"
   echo "  WordPress: ${WP_URL}"
   echo "  Drupal:    ${DRUPAL_URL}"
   echo "  Frontend:  ${FRONTEND_URL}"
   echo ""
-  echo "Ensure you have at least one published post in WordPress and one published 'article' node in Drupal for the frontend demo to display data."
-elif [ "$ACTION_START" = true ] || [ "$ACTION_STOP" = true ]; then
-  echo "Site control actions completed for: '${SITE_TO_CONTROL}'."
-  if [ "$ACTION_START" = true ]; then
-    echo "Relevant project URLs should have been displayed by DDEV during startup if they were started."
-    echo "Use 'ddev list' or 'ddev describe' in the respective project directories to see current URLs and status."
-  fi
-else
-  echo "Prerequisite checks completed. No further actions were performed."
+  echo "Next steps:"
+  echo " - For WordPress, create a post."
+  echo " - For Drupal, create an 'Article' content type."
+  echo " - Visit the frontend URL to see the results."
 fi
 echo ""
 
