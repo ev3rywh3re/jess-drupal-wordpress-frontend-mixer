@@ -181,26 +181,6 @@ echo "ERROR: Could not connect to the Docker daemon. Is it running?"
   log "✅ Docker daemon is now running and accessible."
 }
 
-# --- Helper function to wait for DB connection ---
-wait_for_db() {
-  log "Waiting for database to become ready..."
-  # Poll the database with a simple query until it succeeds.
-  # Timeout after 60 seconds.
-  local counter=0
-  # use ddev to connect to the mysql database for testing
-  while ! ddev mysql -e "SELECT 1" >/dev/null 2>&1; do
-    if [ $counter -ge 60 ]; then
-      log "❌ ERROR: Timed out waiting for the database to become ready. Check 'ddev logs -s db'."
-      exit 1
-    fi
-    printf "."
-    sleep 1
-    ((counter++))
-  done
-  echo ""
-  log "✅ Database is ready."
-}
-
 # --- Site Control Functions ---
 control_ddev_project() {
   local project_dir_name="$1"
@@ -267,17 +247,15 @@ perform_site_control() {
 # --- WordPress Setup ---
 generate_wp_salts() {
   log "Generating and applying WordPress salts..."
-  local raw_salts
-  raw_salts=$(curl -sL https://api.wordpress.org/secret-key/1.1/salt/) # Use the correct WordPress salt API
+  # Fetch salts from the official Roots API
+  local salts
+  salts=$(curl -sL https://roots.io/salts.html)
 
-  if [ -z "$raw_salts" ]; then
-    log "ERROR: Failed to fetch salts from api.wordpress.org. Please add them manually to wordpress/.env"
+  if [ -z "$salts" ]; then
+    log "ERROR: Failed to fetch salts from roots.io. Please add them manually to wordpress/.env"
+    # The installation will likely fail later, but this is a clear warning.
     return
   fi
-
-  # Transform raw salts (define('KEY', 'VALUE');) to Bedrock .env format (KEY='VALUE')
-  local formatted_salts
-  formatted_salts=$(echo "$raw_salts" | sed -E "s/define\('([A-Z_]+)',[[:space:]]*'([^']+)'\);/\1='\2'/g")
 
   # Create a temporary file for the new .env content
   local temp_env
@@ -286,9 +264,9 @@ generate_wp_salts() {
   # Write all lines from the current .env file to the temp file, EXCEPT for the salt lines
   grep -v -E "^(AUTH_KEY|SECURE_AUTH_KEY|LOGGED_IN_KEY|NONCE_KEY|AUTH_SALT|SECURE_AUTH_SALT|LOGGED_IN_SALT|NONCE_SALT)=" .env > "$temp_env"
 
-  # Append the freshly generated formatted salts to the temp file
+  # Append the freshly generated salts to the temp file
   echo "" >> "$temp_env"
-  echo "$formatted_salts" >> "$temp_env"
+  echo "$salts" >> "$temp_env"
 
   # Replace the original .env file with the updated one
   mv "$temp_env" .env
@@ -319,20 +297,6 @@ setup_wordpress() {
 
   ddev config --project-name="$WP_PROJECT_NAME" --project-type=wordpress --docroot=web --create-docroot
 
-  log "Injecting DDEV wp-config-ddev.php include into web/wp-config.php..."
-  SNIPPET_FILE=$(mktemp)
-  cat <<'EOF_SNIPPET' > "$SNIPPET_FILE"
-// Include for ddev-managed settings in wp-config-ddev.php.
-$ddev_settings = dirname(__FILE__) . '/wp-config-ddev.php';
-if (is_readable($ddev_settings) && !defined('DB_USER')) {
-  require_once($ddev_settings);
-}
-
-EOF_SNIPPET
-  sed -i.bak "/require_once ABSPATH . 'wp-settings.php';/r $SNIPPET_FILE" web/wp-config.php
-  rm "$SNIPPET_FILE"
-  rm -f wordpress/web/wp-config.php.bak
-
   log "Configuring Bedrock .env file..."
   if [ ! -f ".env.example" ]; then
     log "ERROR: .env.example is missing in $(pwd). Cannot configure WordPress."
@@ -358,15 +322,6 @@ EOF_SNIPPET
 
   log "Starting ${WP_PROJECT_NAME} DDEV environment..."
   ddev start
-
-  # Wait for the database to be ready to prevent race conditions.
-  wait_for_db
-
-  log "Ensuring a clean database for WordPress installation..."
-  if ! ddev mysql -e "DROP DATABASE IF EXISTS db; CREATE DATABASE db;" >/dev/null 2>&1; then
-    log "ERROR: Failed to drop/create the database for WordPress. This is a critical step."
-    exit 1
-  fi
 
   log "Installing WordPress core..."
   if ! ddev wp --path=web/wp core install --url="$WP_URL" --title="My Bedrock Site" --admin_user=admin --admin_password=password --admin_email=admin@example.com; then
@@ -432,9 +387,6 @@ setup_drupal() {
   log "Starting ${DRUPAL_PROJECT_NAME} DDEV environment..."
   ddev start
 
-  # Wait for the database to be ready to prevent race conditions.
-  wait_for_db
-
   log "Ensuring Drush is installed..."
   ddev composer require drush/drush --no-interaction --quiet
 
@@ -451,14 +403,35 @@ setup_drupal() {
   fi
 
   if [ -f "$DRUPAL_SERVICES_YML" ]; then
-    yq -i '.parameters.cors.config.enabled = true |
-       .parameters.cors.config.allowedHeaders = ["Content-Type", "Authorization", "X-Requested-With", "Accept"] |
-       .parameters.cors.config.allowedMethods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"] |
-       .parameters.cors.config.allowedOrigins = ["'${FRONTEND_URL}'"] |
-       .parameters.cors.config.exposedHeaders = false |
-       .parameters.cors.config.maxAge = 0 |
-       .parameters.cors.config.supportsCredentials = true' "$DRUPAL_SERVICES_YML"
-    log "Drupal CORS configuration updated. Clearing Drupal cache."
+    # Append a CORS configuration block. This is more robust than sed.
+    # The last 'cors.config' block in the file will take precedence.
+    echo "Appending CORS configuration to ${DRUPAL_SERVICES_YML}..."
+    cat << EOF >> "$DRUPAL_SERVICES_YML"
+
+# --- DDEV-generated CORS configuration ---
+# This block was added by the setup script to allow API access from the frontend app.
+parameters:
+  cors.config:
+    enabled: true
+    allowedHeaders:
+      - 'Content-Type'
+      - 'Authorization'
+      - 'X-Requested-With'
+      - 'Accept'
+    allowedMethods:
+      - 'GET'
+      - 'POST'
+      - 'PUT'
+      - 'DELETE'
+      - 'OPTIONS'
+    allowedOrigins:
+      - '${FRONTEND_URL}'
+    exposedHeaders: false
+    maxAge: 0
+    supportsCredentials: true
+# --- End DDEV-generated CORS configuration ---
+EOF
+    log "Drupal CORS configuration appended. Clearing Drupal cache."
     ddev drush cr
   else
     log "ERROR: ${DRUPAL_SERVICES_YML} not found. Cannot configure Drupal CORS."
@@ -514,6 +487,7 @@ list_sites() {
   # The -E flag allows for OR logic in grep.
   ddev list | grep -E "NAME|${WP_PROJECT_NAME}|${DRUPAL_PROJECT_NAME}|${FRONTEND_PROJECT_NAME}" || true
 }
+
 
 
 # --- Help Function ---
